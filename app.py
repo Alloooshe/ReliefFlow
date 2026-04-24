@@ -180,11 +180,13 @@ st.markdown("""
 
 def card(value, label, sub="", cls=""):
     sub_html = f'<div class="rf-card-sub">{sub}</div>' if sub else ""
-    return f"""<div class="rf-card {cls}">
-        <div class="rf-card-val">{value}</div>
-        <div class="rf-card-lbl">{label}</div>
-        {sub_html}
-    </div>"""
+    return (
+        f'<div class="rf-card {cls}">'
+        f'<div class="rf-card-val">{value}</div>'
+        f'<div class="rf-card-lbl">{label}</div>'
+        f'{sub_html}'
+        f'</div>'
+    )
 
 
 def tier_badge(tier: str) -> str:
