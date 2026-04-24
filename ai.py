@@ -1,12 +1,22 @@
 """Gemma4 (via Ollama) interface for ReliefFlow."""
 import base64
 import json
+import os
 import re
 
-import ollama
+from ollama import Client
 import pandas as pd
 
 MODEL = "gemma4:latest"
+
+# Host is read once at import time.
+# Set OLLAMA_HOST env-var (or st.secrets["OLLAMA_HOST"]) before importing this module.
+_HOST   = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+_client = Client(host=_HOST)
+
+
+def get_host() -> str:
+    return _HOST
 
 
 def _chat(prompt: str, system: str | None = None) -> str:
@@ -14,7 +24,7 @@ def _chat(prompt: str, system: str | None = None) -> str:
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
-    resp = ollama.chat(model=MODEL, messages=messages)
+    resp = _client.chat(model=MODEL, messages=messages)
     return resp["message"]["content"]
 
 
@@ -55,7 +65,7 @@ def parse_image_record(image_bytes: bytes) -> dict:
         "The image shows a handwritten or printed form, possibly in Arabic and/or English.\n"
         + _RECORD_FIELDS_PROMPT
     )
-    resp = ollama.chat(
+    resp = _client.chat(
         model=MODEL,
         messages=[{"role": "user", "content": prompt, "images": [img_b64]}],
     )

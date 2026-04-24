@@ -99,7 +99,15 @@ def load_excel(file, source_name: str = None) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
-def load_all_samples(pattern: str = "data_sample*.xlsx") -> pd.DataFrame:
+DEFAULT_SAMPLE_PATTERN = "data_anonymized.xlsx"
+
+
+def load_all_samples(pattern: str = DEFAULT_SAMPLE_PATTERN) -> pd.DataFrame:
+    """Load every .xlsx matching `pattern` and concatenate.
+
+    Defaults to the single consolidated anonymized file so the public demo
+    never exposes the original contact names / phone numbers.
+    """
     frames = []
     for path in sorted(glob.glob(pattern)):
         df = load_excel(path, source_name=Path(path).stem)

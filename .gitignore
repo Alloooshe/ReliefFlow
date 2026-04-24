@@ -5,3 +5,7 @@ __pycache__/
 .DS_Store
 *.egg-info/
 .streamlit/secrets.toml
+
+# Raw / PII-containing inputs — never commit. Use `data_anonymized.xlsx` instead.
+data_sample*.xlsx
+_inspect_samples.py

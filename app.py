@@ -1,8 +1,20 @@
 """ReliefFlow — AI-powered humanitarian aid management (Gemma4 + Ollama)."""
+import os
 from pathlib import Path
 
 from PIL import Image
 import streamlit as st
+
+# ── Inject OLLAMA_HOST from Streamlit secrets before ai.py creates its client ──
+# On Streamlit Cloud: set OLLAMA_HOST in the app's Secrets panel.
+# Locally: set the env-var or rely on the default (http://localhost:11434).
+try:
+    _secret_host = st.secrets.get("OLLAMA_HOST")
+    if _secret_host:
+        os.environ["OLLAMA_HOST"] = _secret_host
+except Exception:
+    pass
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -214,11 +226,12 @@ with st.sidebar:
 
     data_src = st.radio(
         "Source",
-        ["Sample data (3 files)", "Upload Excel"],
+        ["Anonymized sample", "Upload Excel"],
         label_visibility="collapsed",
     )
+    st.caption("Sample file has all names, phone numbers, intermediary and donor names removed.")
 
-    if data_src == "Sample data (3 files)":
+    if data_src == "Anonymized sample":
         if st.button("⬆ Load & Analyse", type="primary", use_container_width=True):
             with st.spinner("Ingesting records…"):
                 raw = load_all_samples()
@@ -275,7 +288,16 @@ with st.sidebar:
         st.markdown(f'<div style="color:#94a3b8;font-size:0.8em;margin-top:6px;">Showing {n_filt} of {len(_df)} families</div>', unsafe_allow_html=True)
 
     st.divider()
-    st.markdown('<div style="color:#475569;font-size:0.75em;text-align:center;">Powered by Gemma4 (local)<br>No data leaves your machine</div>', unsafe_allow_html=True)
+    _host_display = ai.get_host().replace("http://", "").replace("https://", "")
+    _is_local = "localhost" in _host_display or "127.0.0.1" in _host_display
+    _host_label = "🟢 local" if _is_local else "🌐 remote"
+    st.markdown(
+        f'<div style="color:#475569;font-size:0.75em;text-align:center;">'
+        f'Powered by Gemma4<br>'
+        f'<span style="font-family:monospace;font-size:0.9em;color:#64748b;">{_host_display}</span><br>'
+        f'{_host_label}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ─── landing page (no data loaded) ────────────────────────────────────────────
