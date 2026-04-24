@@ -1,6 +1,7 @@
 """ReliefFlow — AI-powered humanitarian aid management (Gemma4 + Ollama)."""
 from pathlib import Path
 
+from PIL import Image
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -14,9 +15,11 @@ import data_entry
 
 # ─── page config ──────────────────────────────────────────────────────────────
 
+_LOGO = Image.open("logo.png")
+
 st.set_page_config(
     page_title="ReliefFlow",
-    page_icon="🤝",
+    page_icon=_LOGO,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -200,12 +203,11 @@ def plotly_fig(fig: go.Figure) -> go.Figure:
 # ─── sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("""
-    <div style="padding: 8px 0 20px;">
-      <div style="font-size:1.7em; font-weight:800; color:white; letter-spacing:-0.5px;">🤝 ReliefFlow</div>
-      <div style="font-size:0.78em; color:#94a3b8; margin-top:4px;">Humanitarian AI · Gemma4 · Ollama</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.image(_LOGO, use_container_width=True)
+    st.markdown(
+        '<div style="text-align:center;color:#94a3b8;font-size:0.75em;margin-top:-8px;margin-bottom:4px;">Humanitarian AI · Gemma4 · Ollama</div>',
+        unsafe_allow_html=True,
+    )
 
     st.divider()
     st.markdown("**Load Data**")
@@ -279,9 +281,12 @@ with st.sidebar:
 # ─── landing page (no data loaded) ────────────────────────────────────────────
 
 if "df" not in st.session_state:
+    col_l, col_c, col_r = st.columns([1, 2, 1])
+    with col_c:
+        st.image(_LOGO, use_container_width=True)
+
     st.markdown("""
-    <div class="hero">
-      <h1>🤝 ReliefFlow</h1>
+    <div class="hero" style="padding-top: 0;">
       <p>AI-powered humanitarian aid management — helps charities prioritize families, identify needs, and query data at scale using Gemma4 running locally.</p>
       <div class="feature-grid">
         <div class="feature-card">
