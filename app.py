@@ -43,7 +43,7 @@ SIGNAL_LABELS = {
 }
 
 DISPLAY_COLS = [
-    "priority_tier", "priority_score", "contact_name", "family_size",
+    "family_num", "priority_tier", "priority_score", "family_size",
     "city", "need_type", "is_widow", "is_orphan_family",
     "is_displaced", "has_medical", "is_unemployed", "source_file",
 ]
@@ -249,9 +249,9 @@ with tab_queue:
     display = df_display(sorted_df)
 
     col_cfg = {
+        "family_num": st.column_config.NumberColumn("#", width="small"),
         "priority_tier": st.column_config.TextColumn("Tier", width="small"),
         "priority_score": st.column_config.ProgressColumn("Score", min_value=0, max_value=150, width="small"),
-        "contact_name": st.column_config.TextColumn("Name", width="medium"),
         "family_size": st.column_config.NumberColumn("Members", width="small"),
         "city": st.column_config.TextColumn("City", width="small"),
         "need_type": st.column_config.TextColumn("Need Type", width="large"),
@@ -288,7 +288,7 @@ with tab_detail:
 
     sorted_options = df.sort_values("priority_score", ascending=False)
     options = sorted_options.apply(
-        lambda r: f"[{r['priority_tier']}] {r.get('contact_name','?')} — {r.get('city','?')} (score {r['priority_score']})",
+        lambda r: f"Family #{int(r['family_num']):03d} — {r.get('city','?')} — [{r['priority_tier']}] (score {r['priority_score']})",
         axis=1,
     ).tolist()
 
@@ -333,7 +333,6 @@ with tab_detail:
                 st.info(cached_profile["summary_en"])
             fields_map = {
                 "Family head role": cached_profile.get("family_head_role", "—"),
-                "Clean name": cached_profile.get("clean_name", "—"),
                 "Housing status": cached_profile.get("housing_status", "—"),
                 "City (AI)": cached_profile.get("city", "—"),
                 "Unemployed": "Yes" if cached_profile.get("is_unemployed") else "No",

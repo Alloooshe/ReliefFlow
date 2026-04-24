@@ -43,7 +43,7 @@ def parse_family(row: pd.Series) -> dict:
 Extract the key information and return ONLY a JSON object — no explanation, no markdown.
 
 Record fields:
-- Contact name: {row.get("contact_name", "N/A")}
+- Family role prefix (from contact field): {row.get("contact_name", "N/A")}
 - Family size: {row.get("family_size", "N/A")}
 - Current address: {row.get("address", "N/A")}
 - Humanitarian situation / displacement reason: {row.get("humanitarian_situation", "N/A")}
@@ -53,7 +53,6 @@ Record fields:
 Return exactly this JSON structure:
 {{
   "family_head_role": "father|mother|widow|orphan-family|unknown",
-  "clean_name": "person's actual name without role prefix",
   "is_widow": true_or_false,
   "is_orphan_family": true_or_false,
   "is_displaced": true_or_false,
@@ -73,7 +72,6 @@ def generate_needs(row: pd.Series) -> list[dict]:
     prompt = f"""You are a humanitarian aid coordinator. Based on the family record below, list their specific needs.
 Return ONLY a JSON array — no explanation, no markdown.
 
-Contact: {row.get("contact_name", "N/A")}
 Family size: {row.get("family_size", "N/A")} members
 Address: {row.get("address", "N/A")}
 Situation: {row.get("humanitarian_situation", "N/A")}

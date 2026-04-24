@@ -79,4 +79,6 @@ def compute_priority(row: pd.Series, signals: dict | None = None) -> dict:
 
 def enrich_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     enriched = pd.DataFrame([compute_priority(row) for _, row in df.iterrows()])
-    return pd.concat([df.reset_index(drop=True), enriched], axis=1)
+    result = pd.concat([df.reset_index(drop=True), enriched], axis=1)
+    result.insert(0, "family_num", range(1, len(result) + 1))
+    return result
