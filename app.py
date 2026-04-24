@@ -9,6 +9,8 @@ from scoring import enrich_dataframe
 from needs import compute_aggregate_needs, CATEGORY_ICON, URGENCY_COLOR
 import ai
 
+# ─── page config ──────────────────────────────────────────────────────────────
+
 st.set_page_config(
     page_title="ReliefFlow",
     page_icon="🤝",
@@ -16,30 +18,22 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.markdown("""
-<style>
-.tier-CRITICAL{background:#c0392b;color:white;padding:2px 10px;border-radius:12px;font-weight:700;font-size:0.85em}
-.tier-HIGH    {background:#e67e22;color:white;padding:2px 10px;border-radius:12px;font-weight:700;font-size:0.85em}
-.tier-MEDIUM  {background:#f1c40f;color:#333;padding:2px 10px;border-radius:12px;font-weight:700;font-size:0.85em}
-.tier-LOW     {background:#27ae60;color:white;padding:2px 10px;border-radius:12px;font-weight:700;font-size:0.85em}
-.signal-badge {background:#dfe6e9;color:#2d3436;padding:2px 8px;border-radius:10px;font-size:0.8em;margin:2px}
-.section-header{font-size:1.1em;font-weight:600;color:#2c3e50;margin-bottom:4px}
-</style>
-""", unsafe_allow_html=True)
+# ─── design system ────────────────────────────────────────────────────────────
 
-TIER_COLORS = {"CRITICAL": "#c0392b", "HIGH": "#e67e22", "MEDIUM": "#f1c40f", "LOW": "#27ae60"}
-TIER_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+TIER_COLORS  = {"CRITICAL": "#dc2626", "HIGH": "#ea580c", "MEDIUM": "#ca8a04", "LOW": "#16a34a"}
+TIER_BG      = {"CRITICAL": "#fef2f2", "HIGH": "#fff7ed", "MEDIUM": "#fefce8", "LOW": "#f0fdf4"}
+TIER_ORDER   = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 
 SIGNAL_LABELS = {
-    "is_widow": "Widow",
+    "is_widow":         "Widow",
     "is_orphan_family": "Orphans",
-    "is_displaced": "Displaced",
-    "has_medical": "Medical",
-    "has_disability": "Disability",
-    "is_unemployed": "No income",
-    "is_homeless": "Homeless",
-    "is_renting": "Renting",
-    "is_pregnant": "Pregnant",
+    "is_displaced":     "Displaced",
+    "has_medical":      "Medical",
+    "has_disability":   "Disability",
+    "is_unemployed":    "No Income",
+    "is_homeless":      "Homeless",
+    "is_renting":       "Renting",
+    "is_pregnant":      "Pregnant",
 }
 
 DISPLAY_COLS = [
@@ -48,17 +42,141 @@ DISPLAY_COLS = [
     "is_displaced", "has_medical", "is_unemployed", "source_file",
 ]
 
+PLOTLY_BASE = dict(
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+    font=dict(family="Inter, system-ui, sans-serif", color="#1e293b", size=12),
+    margin=dict(l=10, r=10, t=40, b=10),
+    hoverlabel=dict(bgcolor="white", font_size=13),
+)
 
-# ─── helpers ─────────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+/* ── app background ── */
+.stApp { background: #f1f5f9; }
 
-def badge(tier: str) -> str:
-    return f'<span class="tier-{tier}">{tier}</span>'
+/* ── sidebar ── */
+[data-testid="stSidebar"] {
+    background: #1e3a5f !important;
+}
+[data-testid="stSidebar"] * { color: #e2e8f0 !important; }
+[data-testid="stSidebar"] .stButton > button {
+    background: #2563eb !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    background: #1d4ed8 !important;
+}
+[data-testid="stSidebar"] hr { border-color: #334d6e !important; }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p { color: #94a3b8 !important; }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong { color: #e2e8f0 !important; }
+
+/* ── tabs ── */
+.stTabs [data-baseweb="tab-list"] {
+    background: white;
+    border-radius: 12px;
+    padding: 6px;
+    gap: 4px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px;
+    padding: 8px 18px;
+    font-weight: 500;
+    font-size: 0.9em;
+    color: #64748b;
+}
+.stTabs [aria-selected="true"] {
+    background: #2563eb !important;
+    color: white !important;
+}
+.stTabs [data-baseweb="tab-panel"] { padding-top: 20px; }
+
+/* ── metric cards ── */
+.rf-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px 16px;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.06);
+    text-align: center;
+    border-top: 4px solid #2563eb;
+}
+.rf-card.critical { border-top-color: #dc2626; }
+.rf-card.high     { border-top-color: #ea580c; }
+.rf-card.medium   { border-top-color: #ca8a04; }
+.rf-card.low      { border-top-color: #16a34a; }
+.rf-card-val  { font-size: 2.2em; font-weight: 800; color: #1e293b; line-height: 1; }
+.rf-card-lbl  { font-size: 0.8em; font-weight: 600; color: #64748b; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.rf-card-sub  { font-size: 0.75em; color: #94a3b8; margin-top: 3px; }
+
+/* ── priority badges ── */
+.badge { display:inline-block; padding:3px 10px; border-radius:20px; font-weight:700; font-size:0.78em; letter-spacing:0.03em; }
+.badge-CRITICAL { background:#fef2f2; color:#dc2626; border:1px solid #fca5a5; }
+.badge-HIGH     { background:#fff7ed; color:#ea580c; border:1px solid #fdba74; }
+.badge-MEDIUM   { background:#fefce8; color:#ca8a04; border:1px solid #fde047; }
+.badge-LOW      { background:#f0fdf4; color:#16a34a; border:1px solid #86efac; }
+
+/* ── signal pills ── */
+.pill { display:inline-block; background:#f1f5f9; color:#475569; padding:2px 9px; border-radius:20px; font-size:0.78em; margin:2px; border:1px solid #e2e8f0; }
+
+/* ── section titles ── */
+.rf-section { font-size:1.1em; font-weight:700; color:#1e293b; margin:16px 0 8px; border-left:3px solid #2563eb; padding-left:10px; }
+
+/* ── needs urgency rows ── */
+.need-critical { border-left: 3px solid #dc2626; padding: 8px 12px; background:#fef2f2; border-radius:6px; margin:4px 0; }
+.need-high     { border-left: 3px solid #ea580c; padding: 8px 12px; background:#fff7ed; border-radius:6px; margin:4px 0; }
+.need-medium   { border-left: 3px solid #ca8a04; padding: 8px 12px; background:#fefce8; border-radius:6px; margin:4px 0; }
+
+/* ── query chips ── */
+.chip-row { display:flex; flex-wrap:wrap; gap:8px; margin: 8px 0 16px; }
+.chip { background:white; border:1px solid #e2e8f0; border-radius:20px; padding:5px 14px; font-size:0.83em; color:#2563eb; cursor:pointer; font-weight:500; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+
+/* ── info/success boxes ── */
+.rf-info { background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:14px 18px; color:#1e40af; font-size:0.9em; margin: 8px 0; }
+.rf-success { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px 18px; color:#166534; font-size:0.9em; margin: 8px 0; }
+
+/* ── family detail card ── */
+.detail-card { background:white; border-radius:12px; padding:20px; box-shadow:0 1px 8px rgba(0,0,0,0.06); }
+.detail-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #f1f5f9; font-size:0.9em; }
+.detail-row:last-child { border-bottom: none; }
+.detail-label { color:#64748b; font-weight:500; }
+.detail-value { color:#1e293b; font-weight:600; text-align:right; }
+
+/* ── landing page ── */
+.hero { text-align:center; padding:60px 20px 40px; }
+.hero h1 { font-size:2.8em; font-weight:800; color:#1e3a5f; margin-bottom:8px; }
+.hero p  { font-size:1.15em; color:#64748b; max-width:560px; margin:0 auto 32px; }
+.feature-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; max-width:800px; margin:0 auto; }
+.feature-card { background:white; border-radius:12px; padding:20px; box-shadow:0 1px 8px rgba(0,0,0,0.06); text-align:left; }
+.feature-icon { font-size:1.8em; margin-bottom:8px; }
+.feature-title { font-weight:700; color:#1e293b; font-size:0.95em; margin-bottom:4px; }
+.feature-desc  { font-size:0.82em; color:#64748b; line-height:1.5; }
+</style>
+""", unsafe_allow_html=True)
 
 
-def signal_badges(row: pd.Series) -> str:
+# ─── helpers ──────────────────────────────────────────────────────────────────
+
+def card(value, label, sub="", cls=""):
+    sub_html = f'<div class="rf-card-sub">{sub}</div>' if sub else ""
+    return f"""<div class="rf-card {cls}">
+        <div class="rf-card-val">{value}</div>
+        <div class="rf-card-lbl">{label}</div>
+        {sub_html}
+    </div>"""
+
+
+def tier_badge(tier: str) -> str:
+    return f'<span class="badge badge-{tier}">{tier}</span>'
+
+
+def pills(row: pd.Series) -> str:
     return " ".join(
-        f'<span class="signal-badge">{label}</span>'
-        for col, label in SIGNAL_LABELS.items()
+        f'<span class="pill">{lbl}</span>'
+        for col, lbl in SIGNAL_LABELS.items()
         if row.get(col, False)
     )
 
@@ -71,70 +189,124 @@ def df_display(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-# ─── sidebar ─────────────────────────────────────────────────────────────────
+def plotly_fig(fig: go.Figure) -> go.Figure:
+    fig.update_layout(**PLOTLY_BASE)
+    return fig
+
+
+# ─── sidebar ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.title("🤝 ReliefFlow")
-    st.caption("Gemma4 · Ollama · Humanitarian AI")
-    st.divider()
+    st.markdown("""
+    <div style="padding: 8px 0 20px;">
+      <div style="font-size:1.7em; font-weight:800; color:white; letter-spacing:-0.5px;">🤝 ReliefFlow</div>
+      <div style="font-size:0.78em; color:#94a3b8; margin-top:4px;">Humanitarian AI · Gemma4 · Ollama</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    data_src = st.radio("Data source", ["Sample data (3 files)", "Upload Excel"])
+    st.divider()
+    st.markdown("**Load Data**")
+
+    data_src = st.radio(
+        "Source",
+        ["Sample data (3 files)", "Upload Excel"],
+        label_visibility="collapsed",
+    )
 
     if data_src == "Sample data (3 files)":
-        if st.button("Load & Analyse", type="primary", use_container_width=True):
-            with st.spinner("Ingesting & scoring families…"):
+        if st.button("⬆ Load & Analyse", type="primary", use_container_width=True):
+            with st.spinner("Ingesting records…"):
                 raw = load_all_samples()
-                if raw.empty:
-                    st.error("No data found in sample files.")
-                else:
-                    st.session_state["df"] = enrich_dataframe(raw)
-                    st.session_state["ai_cache"] = {}
-                    st.session_state["insights"] = None
-                    st.success(f"Loaded **{len(st.session_state['df'])}** families")
+            if raw.empty:
+                st.error("No data found.")
+            else:
+                with st.spinner("Scoring families…"):
+                    st.session_state.update({
+                        "df": enrich_dataframe(raw),
+                        "ai_cache": {},
+                        "insights": None,
+                        "needs_df": pd.DataFrame(),
+                        "needs_narrative": None,
+                    })
+                n = len(st.session_state["df"])
+                st.success(f"✓ {n} families loaded")
     else:
-        uploaded = st.file_uploader("Upload .xlsx file", type=["xlsx", "xls"])
+        uploaded = st.file_uploader("Upload .xlsx / .xls", type=["xlsx", "xls"])
         if uploaded:
             with st.spinner("Processing…"):
                 raw = load_excel(uploaded)
-                if raw.empty:
-                    st.error("Could not parse this file. Check that it matches the expected format.")
-                else:
-                    st.session_state["df"] = enrich_dataframe(raw)
-                    st.session_state["ai_cache"] = {}
-                    st.session_state["insights"] = None
-                    st.success(f"Loaded **{len(st.session_state['df'])}** families")
+            if raw.empty:
+                st.error("Could not parse this file.")
+            else:
+                st.session_state.update({
+                    "df": enrich_dataframe(raw),
+                    "ai_cache": {},
+                    "insights": None,
+                    "needs_df": pd.DataFrame(),
+                    "needs_narrative": None,
+                })
+                st.success(f"✓ {len(st.session_state['df'])} families loaded")
 
     if "df" in st.session_state:
+        _df = st.session_state["df"]
         st.divider()
         st.markdown("**Filters**")
+
         tier_filter = st.multiselect(
             "Priority tier",
             TIER_ORDER,
             default=TIER_ORDER,
             key="tier_filter",
         )
-        city_options = sorted(st.session_state["df"]["city"].dropna().unique().tolist())
-        city_filter = st.multiselect("City", city_options, default=city_options, key="city_filter")
+        city_options = sorted(_df["city"].dropna().unique().tolist())
+        city_filter = st.multiselect(
+            "City / Region",
+            city_options,
+            default=city_options,
+            key="city_filter",
+        )
+
+        n_filt = len(_df[_df["priority_tier"].isin(tier_filter) & _df["city"].isin(city_filter)])
+        st.markdown(f'<div style="color:#94a3b8;font-size:0.8em;margin-top:6px;">Showing {n_filt} of {len(_df)} families</div>', unsafe_allow_html=True)
+
+    st.divider()
+    st.markdown('<div style="color:#475569;font-size:0.75em;text-align:center;">Powered by Gemma4 (local)<br>No data leaves your machine</div>', unsafe_allow_html=True)
 
 
-# ─── early exit if no data ────────────────────────────────────────────────────
+# ─── landing page (no data loaded) ────────────────────────────────────────────
 
 if "df" not in st.session_state:
-    st.title("🤝 ReliefFlow")
     st.markdown("""
-**AI-powered humanitarian aid prioritization — powered by Gemma4 (Ollama)**
-
-Upload an Excel file containing family welfare records or load the bundled sample data to get started.
-
-**What this app does:**
-- Ingests Arabic/English Excel data and normalises it to a unified schema
-- Scores each family by vulnerability using keyword-based rules
-- Uses **Gemma4** (locally via Ollama) to generate detailed needs lists and answer natural-language queries
-- Helps charity workers prioritise families and understand aggregate needs at scale
-    """)
+    <div class="hero">
+      <h1>🤝 ReliefFlow</h1>
+      <p>AI-powered humanitarian aid management — helps charities prioritize families, identify needs, and query data at scale using Gemma4 running locally.</p>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <div class="feature-title">Smart Prioritization</div>
+          <div class="feature-desc">Automatically scores every family by vulnerability signals — homelessness, medical, displacement, income loss and more.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📦</div>
+          <div class="feature-title">Aggregate Needs</div>
+          <div class="feature-desc">Generates a categorized procurement list across all families — food, medical, shelter, education, and financial support.</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔍</div>
+          <div class="feature-title">Natural Language Search</div>
+          <div class="feature-desc">Ask questions in plain English — "widows with children in Homs" — and Gemma4 filters the data for you.</div>
+        </div>
+      </div>
+      <div style="margin-top:36px; color:#94a3b8; font-size:0.88em;">
+        ← Load sample data or upload your Excel file from the sidebar to begin
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
     st.stop()
 
-# Apply sidebar filters
+
+# ─── apply filters ────────────────────────────────────────────────────────────
+
 df_full: pd.DataFrame = st.session_state["df"]
 tier_f = st.session_state.get("tier_filter", TIER_ORDER)
 city_f = st.session_state.get("city_filter", df_full["city"].unique().tolist())
@@ -146,384 +318,298 @@ df: pd.DataFrame = df_full[
 
 # ─── tabs ─────────────────────────────────────────────────────────────────────
 
-tab_dash, tab_queue, tab_detail, tab_query, tab_needs, tab_insights = st.tabs(
-    ["📊 Dashboard", "📋 Priority Queue", "👤 Family Detail", "🔍 AI Query", "📦 Needs Report", "💡 AI Insights"]
-)
+tab_dash, tab_queue, tab_needs, tab_detail, tab_query, tab_insights = st.tabs([
+    "🏠 Overview",
+    "🚨 Priority List",
+    "📦 Needs Report",
+    "👤 Family Profile",
+    "🔍 Smart Search",
+    "💡 AI Insights",
+])
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — Dashboard
+# TAB 1 — Overview
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_dash:
-    st.subheader("Overview")
-
-    total = len(df)
+    total        = len(df)
     total_people = int(pd.to_numeric(df["family_size"], errors="coerce").sum())
-    n_critical = int((df["priority_tier"] == "CRITICAL").sum())
-    n_high = int((df["priority_tier"] == "HIGH").sum())
+    n_critical   = int((df["priority_tier"] == "CRITICAL").sum())
+    n_high       = int((df["priority_tier"] == "HIGH").sum())
+    n_medium     = int((df["priority_tier"] == "MEDIUM").sum())
+    n_low        = int((df["priority_tier"] == "LOW").sum())
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total Families", f"{total:,}")
-    c2.metric("Total Individuals", f"{total_people:,}")
-    c3.metric("🔴 Critical", n_critical)
-    c4.metric("🟠 High Priority", n_high)
-    c5.metric("Sources", df["source_file"].nunique())
+    # ── metric row ──
+    cols = st.columns(6)
+    cards = [
+        (total,        "Families",     "",                   ""),
+        (total_people, "Individuals",  "across all families",""),
+        (n_critical,   "Critical",     "immediate action",   "critical"),
+        (n_high,       "High Priority","next in queue",      "high"),
+        (n_medium,     "Medium",       "",                   "medium"),
+        (n_low,        "Low",          "",                   "low"),
+    ]
+    for col, (val, lbl, sub, cls) in zip(cols, cards):
+        col.markdown(card(f"{val:,}", lbl, sub, cls), unsafe_allow_html=True)
 
-    st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    col_left, col_right = st.columns(2)
+    # ── row 1: priority donut + city bar ──
+    left, right = st.columns(2)
 
-    with col_left:
-        tier_counts = df["priority_tier"].value_counts().reindex(TIER_ORDER, fill_value=0).reset_index()
-        tier_counts.columns = ["Tier", "Count"]
-        fig = px.bar(
-            tier_counts, x="Tier", y="Count",
-            color="Tier",
-            color_discrete_map=TIER_COLORS,
-            title="Families by Priority Tier",
+    with left:
+        st.markdown('<div class="rf-section">Priority Distribution</div>', unsafe_allow_html=True)
+        tier_counts = (
+            df["priority_tier"].value_counts()
+            .reindex(TIER_ORDER, fill_value=0)
+            .reset_index()
         )
-        fig.update_layout(showlegend=False, plot_bgcolor="white")
+        tier_counts.columns = ["Tier", "Families"]
+        fig = px.pie(
+            tier_counts, names="Tier", values="Families",
+            color="Tier", color_discrete_map=TIER_COLORS,
+            hole=0.5,
+        )
+        fig.update_traces(textposition="outside", textinfo="label+value")
+        fig.update_layout(**PLOTLY_BASE, showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
 
-    with col_right:
+    with right:
+        st.markdown('<div class="rf-section">Families by City</div>', unsafe_allow_html=True)
         city_counts = df["city"].value_counts().head(10).reset_index()
-        city_counts.columns = ["City", "Count"]
+        city_counts.columns = ["City", "Families"]
         fig2 = px.bar(
-            city_counts, x="Count", y="City",
+            city_counts, x="Families", y="City",
             orientation="h",
-            title="Top Cities",
-            color_discrete_sequence=["#3498db"],
+            color="Families",
+            color_continuous_scale=["#bfdbfe", "#1d4ed8"],
         )
-        fig2.update_layout(yaxis=dict(autorange="reversed"), plot_bgcolor="white")
+        fig2.update_layout(**PLOTLY_BASE, yaxis=dict(autorange="reversed"), coloraxis_showscale=False)
         st.plotly_chart(fig2, use_container_width=True)
 
-    st.divider()
-    col_a, col_b, col_c = st.columns(3)
+    # ── row 2: vulnerability signals + avg family size ──
+    left2, right2 = st.columns(2)
 
-    signal_stats = {
-        label: int(df.get(col, pd.Series([False] * len(df))).sum())
-        for col, label in SIGNAL_LABELS.items()
-        if col in df.columns
-    }
-    sig_df = pd.DataFrame(list(signal_stats.items()), columns=["Situation", "Families"])
-    sig_df = sig_df.sort_values("Families", ascending=False)
-
-    with col_a:
-        fig3 = px.pie(
-            sig_df, names="Situation", values="Families",
-            title="Vulnerability Signals Distribution",
-            hole=0.4,
+    with left2:
+        st.markdown('<div class="rf-section">Vulnerability Signals</div>', unsafe_allow_html=True)
+        sig_stats = {
+            lbl: int(df[col].sum())
+            for col, lbl in SIGNAL_LABELS.items()
+            if col in df.columns
+        }
+        sig_df = (
+            pd.DataFrame(list(sig_stats.items()), columns=["Signal", "Families"])
+            .sort_values("Families", ascending=True)
         )
-        fig3.update_traces(textposition="inside", textinfo="label+percent")
+        fig3 = px.bar(
+            sig_df, x="Families", y="Signal",
+            orientation="h",
+            color="Families",
+            color_continuous_scale=["#fde68a", "#dc2626"],
+        )
+        fig3.update_layout(**PLOTLY_BASE, coloraxis_showscale=False)
         st.plotly_chart(fig3, use_container_width=True)
 
-    with col_b:
-        avg_by_tier = df.groupby("priority_tier")["family_size"].apply(
-            lambda s: pd.to_numeric(s, errors="coerce").mean()
-        ).reindex(TIER_ORDER).reset_index()
-        avg_by_tier.columns = ["Tier", "Avg Family Size"]
-        fig4 = px.bar(
-            avg_by_tier, x="Tier", y="Avg Family Size",
-            color="Tier", color_discrete_map=TIER_COLORS,
-            title="Avg Family Size per Tier",
+    with right2:
+        st.markdown('<div class="rf-section">Avg Members per Priority Tier</div>', unsafe_allow_html=True)
+        avg_by_tier = (
+            df.groupby("priority_tier")["family_size"]
+            .apply(lambda s: pd.to_numeric(s, errors="coerce").mean())
+            .reindex(TIER_ORDER)
+            .reset_index()
         )
-        fig4.update_layout(showlegend=False, plot_bgcolor="white")
+        avg_by_tier.columns = ["Tier", "Avg Members"]
+        fig4 = px.bar(
+            avg_by_tier, x="Tier", y="Avg Members",
+            color="Tier", color_discrete_map=TIER_COLORS,
+            text_auto=".1f",
+        )
+        fig4.update_layout(**PLOTLY_BASE, showlegend=False)
+        fig4.update_traces(textposition="outside")
         st.plotly_chart(fig4, use_container_width=True)
 
-    with col_c:
-        src_counts = df["source_file"].value_counts().reset_index()
-        src_counts.columns = ["Source", "Count"]
-        fig5 = px.pie(src_counts, names="Source", values="Count", title="Families by Source File")
-        st.plotly_chart(fig5, use_container_width=True)
+    # ── top critical families preview ──
+    st.markdown('<div class="rf-section">Top 10 Critical Families</div>', unsafe_allow_html=True)
+    top10 = df[df["priority_tier"] == "CRITICAL"].sort_values("priority_score", ascending=False).head(10)
+    if top10.empty:
+        st.markdown('<div class="rf-info">No critical families in the current filter.</div>', unsafe_allow_html=True)
+    else:
+        st.dataframe(
+            df_display(top10),
+            column_config={
+                "family_num":       st.column_config.NumberColumn("#", width="small"),
+                "priority_tier":    st.column_config.TextColumn("Tier", width="small"),
+                "priority_score":   st.column_config.ProgressColumn("Score", min_value=0, max_value=150, width="small"),
+                "family_size":      st.column_config.NumberColumn("Members", width="small"),
+                "city":             st.column_config.TextColumn("City", width="small"),
+                "need_type":        st.column_config.TextColumn("Need", width="large"),
+                "is_widow":         st.column_config.TextColumn("Widow", width="small"),
+                "is_orphan_family": st.column_config.TextColumn("Orphans", width="small"),
+                "is_displaced":     st.column_config.TextColumn("Displaced", width="small"),
+                "has_medical":      st.column_config.TextColumn("Medical", width="small"),
+                "is_unemployed":    st.column_config.TextColumn("No Income", width="small"),
+                "source_file":      st.column_config.TextColumn("Source", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — Priority Queue
+# TAB 2 — Priority List
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_queue:
-    st.subheader(f"Priority Queue — {len(df)} families")
-
     sorted_df = df.sort_values("priority_score", ascending=False).reset_index(drop=True)
-    display = df_display(sorted_df)
+
+    top_cols = st.columns(4)
+    top_cols[0].markdown(card(len(sorted_df), "Families shown", "current filters", ""), unsafe_allow_html=True)
+    top_cols[1].markdown(card(int((sorted_df["priority_tier"]=="CRITICAL").sum()), "Critical", "", "critical"), unsafe_allow_html=True)
+    top_cols[2].markdown(card(int((sorted_df["priority_tier"]=="HIGH").sum()), "High", "", "high"), unsafe_allow_html=True)
+    top_cols[3].markdown(card(
+        f"{pd.to_numeric(sorted_df['family_size'], errors='coerce').sum():.0f}",
+        "Total Individuals", "in filtered set", ""), unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<div class="rf-section">Ranked by Vulnerability Score</div>', unsafe_allow_html=True)
 
     col_cfg = {
-        "family_num": st.column_config.NumberColumn("#", width="small"),
-        "priority_tier": st.column_config.TextColumn("Tier", width="small"),
-        "priority_score": st.column_config.ProgressColumn("Score", min_value=0, max_value=150, width="small"),
-        "family_size": st.column_config.NumberColumn("Members", width="small"),
-        "city": st.column_config.TextColumn("City", width="small"),
-        "need_type": st.column_config.TextColumn("Need Type", width="large"),
-        "is_widow": st.column_config.TextColumn("Widow", width="small"),
+        "family_num":       st.column_config.NumberColumn("#", width="small"),
+        "priority_tier":    st.column_config.TextColumn("Tier", width="small"),
+        "priority_score":   st.column_config.ProgressColumn("Score", min_value=0, max_value=150, width="medium"),
+        "family_size":      st.column_config.NumberColumn("Members", width="small"),
+        "city":             st.column_config.TextColumn("City", width="small"),
+        "need_type":        st.column_config.TextColumn("Need Type", width="large"),
+        "is_widow":         st.column_config.TextColumn("Widow", width="small"),
         "is_orphan_family": st.column_config.TextColumn("Orphans", width="small"),
-        "is_displaced": st.column_config.TextColumn("Displaced", width="small"),
-        "has_medical": st.column_config.TextColumn("Medical", width="small"),
-        "is_unemployed": st.column_config.TextColumn("No Income", width="small"),
-        "source_file": st.column_config.TextColumn("Source", width="small"),
+        "is_displaced":     st.column_config.TextColumn("Displaced", width="small"),
+        "has_medical":      st.column_config.TextColumn("Medical", width="small"),
+        "is_unemployed":    st.column_config.TextColumn("No Income", width="small"),
+        "source_file":      st.column_config.TextColumn("Source", width="small"),
     }
 
     st.dataframe(
-        display,
+        df_display(sorted_df),
         column_config=col_cfg,
+        hide_index=True,
         use_container_width=True,
-        height=600,
+        height=520,
     )
 
     csv = sorted_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        "⬇ Export filtered list (CSV)",
+        "⬇  Export priority list (CSV)",
         data=csv,
-        file_name="reliefflow_priority_queue.csv",
+        file_name="reliefflow_priority_list.csv",
         mime="text/csv",
     )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — Family Detail (Gemma4)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-with tab_detail:
-    st.subheader("Family Detail — AI-generated profile")
-
-    sorted_options = df.sort_values("priority_score", ascending=False)
-    options = sorted_options.apply(
-        lambda r: f"Family #{int(r['family_num']):03d} — {r.get('city','?')} — [{r['priority_tier']}] (score {r['priority_score']})",
-        axis=1,
-    ).tolist()
-
-    if not options:
-        st.info("No families match current filters.")
-        st.stop()
-
-    selected_label = st.selectbox("Select a family", options)
-    selected_idx = options.index(selected_label)
-    row = sorted_options.iloc[selected_idx]
-
-    # Raw record
-    with st.expander("Raw record", expanded=False):
-        raw_fields = {
-            k: v for k, v in row.items()
-            if k not in ("family_id",) and not k.startswith("is_") and k not in ("has_medical", "has_disability", "priority_score", "priority_tier")
-        }
-        for k, v in raw_fields.items():
-            if pd.notna(v) and str(v).strip() not in ("", "nan"):
-                st.markdown(f"**{k}**: {v}")
-
-    # Rule-based signals
-    signals_present = [label for col, label in SIGNAL_LABELS.items() if row.get(col, False)]
-    if signals_present:
-        st.markdown(
-            "**Detected signals:** " + " ".join(f'<span class="signal-badge">{s}</span>' for s in signals_present),
-            unsafe_allow_html=True,
-        )
-
-    col_l, col_r = st.columns(2)
-
-    with col_l:
-        if st.button("🤖 Generate AI Profile", key="btn_profile"):
-            with st.spinner("Gemma4 is analysing this family…"):
-                profile = ai.parse_family(row)
-                st.session_state.setdefault("ai_cache", {})[row["family_id"]] = profile
-
-        cached_profile = st.session_state.get("ai_cache", {}).get(row["family_id"], {})
-        if cached_profile:
-            st.markdown("#### AI Profile")
-            if cached_profile.get("summary_en"):
-                st.info(cached_profile["summary_en"])
-            fields_map = {
-                "Family head role": cached_profile.get("family_head_role", "—"),
-                "Housing status": cached_profile.get("housing_status", "—"),
-                "City (AI)": cached_profile.get("city", "—"),
-                "Unemployed": "Yes" if cached_profile.get("is_unemployed") else "No",
-                "Widow": "Yes" if cached_profile.get("is_widow") else "No",
-                "Orphan family": "Yes" if cached_profile.get("is_orphan_family") else "No",
-                "Displaced": "Yes" if cached_profile.get("is_displaced") else "No",
-            }
-            for k, v in fields_map.items():
-                st.markdown(f"**{k}:** {v}")
-            if cached_profile.get("medical_conditions"):
-                st.markdown(f"**Medical conditions:** {', '.join(cached_profile['medical_conditions'])}")
-
-    with col_r:
-        if st.button("📋 Generate Needs List", key="btn_needs"):
-            with st.spinner("Gemma4 is generating needs list…"):
-                needs = ai.generate_needs(row)
-                st.session_state.setdefault("ai_cache", {})[row["family_id"] + "_needs"] = needs
-
-        cached_needs = st.session_state.get("ai_cache", {}).get(row["family_id"] + "_needs", [])
-        if cached_needs:
-            st.markdown("#### Needs List")
-            urgency_color = {"critical": "🔴", "high": "🟠", "medium": "🟡"}
-            category_icon = {
-                "food": "🍞", "medical": "💊", "shelter": "🏠", "education": "📚",
-                "hygiene": "🧼", "clothing": "👕", "financial": "💵",
-                "psychosocial": "🧠", "other": "📦",
-            }
-            for need in cached_needs:
-                icon = category_icon.get(need.get("category", "other"), "📦")
-                urg = urgency_color.get(need.get("urgency", "medium"), "🟡")
-                st.markdown(f"{urg} {icon} **{need.get('item', '?')}** _{need.get('category', '')}_")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — AI Query
-# ═══════════════════════════════════════════════════════════════════════════════
-
-with tab_query:
-    st.subheader("AI Query — ask questions about the data")
-    st.caption("Gemma4 will translate your question into a filter and return matching families.")
-
-    example_queries = [
-        "Show me all homeless families",
-        "Families with medical conditions in Homs",
-        "Widows with more than 4 family members",
-        "Displaced families with no income",
-        "All critical priority families",
-        "Families from Masyaf",
-    ]
-    st.markdown("**Example queries:** " + " · ".join(f"`{q}`" for q in example_queries))
-
-    question = st.text_input("Your question", placeholder="e.g. Show me widows with children who have no income")
-
-    if st.button("🔍 Search", type="primary", key="btn_query") and question:
-        with st.spinner("Gemma4 is processing your query…"):
-            result_df, explanation = ai.answer_query(df, question)
-
-        st.markdown(f"**Gemma4:** {explanation}")
-        if result_df.empty:
-            st.warning("No results found or the query could not be executed.")
-        else:
-            st.success(f"Found **{len(result_df)}** matching families")
-            st.dataframe(
-                df_display(result_df.sort_values("priority_score", ascending=False)),
-                use_container_width=True,
-                height=400,
-            )
-            csv_q = result_df.to_csv(index=False).encode("utf-8-sig")
-            st.download_button("⬇ Export results (CSV)", data=csv_q, file_name="query_results.csv", mime="text/csv")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TAB 5 — Needs Report
+# TAB 3 — Needs Report
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_needs:
-    st.subheader("Aggregate Needs Report")
-    st.caption(
-        "Rule-based needs are computed instantly from vulnerability signals. "
-        "Click **Generate AI Narrative** to have Gemma4 turn the table into a procurement action plan."
+    st.markdown(
+        '<div class="rf-info">Rule-based needs are computed instantly from vulnerability signals. '
+        'Click <strong>Generate Needs List</strong> to build the table, then optionally ask Gemma4 '
+        'to turn it into a procurement action plan.</div>',
+        unsafe_allow_html=True,
     )
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("📦 Generate Aggregate Needs List", type="primary"):
-        with st.spinner("Computing needs for all families…"):
-            needs_df = compute_aggregate_needs(df)
-            st.session_state["needs_df"] = needs_df
-            st.session_state["needs_narrative"] = None  # reset on recompute
+    if st.button("📦  Generate Aggregate Needs List", type="primary"):
+        with st.spinner("Computing needs across all families…"):
+            _needs = compute_aggregate_needs(df)
+            st.session_state["needs_df"] = _needs
+            st.session_state["needs_narrative"] = None
 
     needs_df: pd.DataFrame = st.session_state.get("needs_df", pd.DataFrame())
 
     if needs_df.empty:
-        st.info("Click the button above to generate the needs list for the current filtered dataset.")
+        st.markdown(
+            '<div style="text-align:center;padding:60px 0;color:#94a3b8;">'
+            '<div style="font-size:2.5em;margin-bottom:12px;">📦</div>'
+            'Click the button above to generate the needs list for the current dataset.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
     else:
-        # ── summary metrics ──
-        n_critical_needs = int((needs_df["urgency"] == "critical").sum())
-        n_high_needs = int((needs_df["urgency"] == "high").sum())
-        total_need_instances = int(needs_df["families_count"].sum())
+        n_crit_n  = int((needs_df["urgency"] == "critical").sum())
+        n_high_n  = int((needs_df["urgency"] == "high").sum())
+        total_ins = int(needs_df["families_count"].sum())
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Unique need types", len(needs_df))
-        c2.metric("🔴 Critical needs", n_critical_needs)
-        c3.metric("🟠 High-priority needs", n_high_needs)
-        c4.metric("Total need instances", f"{total_need_instances:,}")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.markdown(card(len(needs_df),        "Need types identified", "", ""), unsafe_allow_html=True)
+        m2.markdown(card(n_crit_n,             "Critical need types",  "", "critical"), unsafe_allow_html=True)
+        m3.markdown(card(n_high_n,             "High-priority types",  "", "high"), unsafe_allow_html=True)
+        m4.markdown(card(f"{total_ins:,}",     "Total need instances", "", ""), unsafe_allow_html=True)
 
-        st.divider()
+        st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── needs table ──
-        col_left, col_right = st.columns([3, 2])
+        tbl_col, chart_col = st.columns([3, 2])
 
-        with col_left:
-            st.markdown("#### Needs by Family Count")
+        with tbl_col:
+            st.markdown('<div class="rf-section">Needs by Family Count</div>', unsafe_allow_html=True)
 
-            display_needs = needs_df.copy()
-            display_needs.insert(
-                0, "Icon",
-                display_needs["category"].map(lambda c: CATEGORY_ICON.get(c, "📦"))
-            )
-            display_needs = display_needs.rename(columns={
-                "need_item": "Need",
-                "category": "Category",
-                "urgency": "Urgency",
+            dn = needs_df.copy()
+            dn.insert(0, "Icon", dn["category"].map(lambda c: CATEGORY_ICON.get(c, "📦")))
+            dn = dn.rename(columns={
+                "need_item":      "Need",
+                "category":       "Category",
+                "urgency":        "Urgency",
                 "families_count": "Families",
-                "pct_of_total": "% of Total",
+                "pct_of_total":   "% of Total",
             })
-
             st.dataframe(
-                display_needs[["Icon", "Need", "Category", "Urgency", "Families", "% of Total"]],
+                dn[["Icon", "Need", "Category", "Urgency", "Families", "% of Total"]],
                 column_config={
-                    "Icon": st.column_config.TextColumn("", width="small"),
-                    "Need": st.column_config.TextColumn("Need Item", width="large"),
-                    "Category": st.column_config.TextColumn("Category", width="small"),
-                    "Urgency": st.column_config.TextColumn("Urgency", width="small"),
-                    "Families": st.column_config.ProgressColumn(
-                        "# Families", min_value=0, max_value=int(needs_df["families_count"].max()), width="medium"
+                    "Icon":       st.column_config.TextColumn("", width="small"),
+                    "Need":       st.column_config.TextColumn("Need Item", width="large"),
+                    "Category":   st.column_config.TextColumn("Category", width="small"),
+                    "Urgency":    st.column_config.TextColumn("Urgency", width="small"),
+                    "Families":   st.column_config.ProgressColumn(
+                        "# Families", min_value=0,
+                        max_value=int(needs_df["families_count"].max()), width="medium",
                     ),
                     "% of Total": st.column_config.NumberColumn("% of Total", format="%.1f%%", width="small"),
                 },
                 hide_index=True,
                 use_container_width=True,
-                height=420,
+                height=400,
             )
-
             csv_needs = needs_df.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                "⬇ Export needs list (CSV)",
-                data=csv_needs,
-                file_name="aggregate_needs.csv",
-                mime="text/csv",
-            )
+            st.download_button("⬇  Export needs list (CSV)", data=csv_needs,
+                               file_name="aggregate_needs.csv", mime="text/csv")
 
-        with col_right:
-            st.markdown("#### By Category")
-            cat_summary = (
+        with chart_col:
+            st.markdown('<div class="rf-section">By Category</div>', unsafe_allow_html=True)
+            cat_s = (
                 needs_df.groupby("category")["families_count"].sum()
-                .sort_values(ascending=True)
-                .reset_index()
+                .sort_values(ascending=True).reset_index()
             )
-            cat_summary["icon"] = cat_summary["category"].map(
-                lambda c: CATEGORY_ICON.get(c, "📦") + " " + c.capitalize()
-            )
-            fig_cat = px.bar(
-                cat_summary, x="families_count", y="icon",
-                orientation="h",
-                labels={"families_count": "Families", "icon": ""},
-                color_discrete_sequence=["#3498db"],
-            )
-            fig_cat.update_layout(plot_bgcolor="white", showlegend=False, margin=dict(l=0))
-            st.plotly_chart(fig_cat, use_container_width=True)
+            cat_s["label"] = cat_s["category"].map(lambda c: CATEGORY_ICON.get(c, "📦") + " " + c.capitalize())
+            fig_c = px.bar(cat_s, x="families_count", y="label", orientation="h",
+                           color_discrete_sequence=["#2563eb"])
+            fig_c.update_layout(**PLOTLY_BASE, showlegend=False)
+            st.plotly_chart(fig_c, use_container_width=True)
 
-            st.markdown("#### By Urgency")
-            urg_summary = (
+            st.markdown('<div class="rf-section">By Urgency</div>', unsafe_allow_html=True)
+            urg_s = (
                 needs_df.groupby("urgency")["families_count"].sum()
-                .reindex(["critical", "high", "medium"], fill_value=0)
-                .reset_index()
+                .reindex(["critical", "high", "medium"], fill_value=0).reset_index()
             )
-            urg_summary.columns = ["Urgency", "Families"]
-            urg_colors = [URGENCY_COLOR.get(u, "#95a5a6") for u in urg_summary["Urgency"]]
-            fig_urg = px.pie(
-                urg_summary, names="Urgency", values="Families",
-                color="Urgency",
-                color_discrete_map=URGENCY_COLOR,
-                title="Need instances by urgency",
-                hole=0.45,
-            )
-            st.plotly_chart(fig_urg, use_container_width=True)
+            urg_s.columns = ["Urgency", "Families"]
+            fig_u = px.pie(urg_s, names="Urgency", values="Families",
+                           color="Urgency", color_discrete_map=URGENCY_COLOR, hole=0.45)
+            fig_u.update_layout(**PLOTLY_BASE)
+            st.plotly_chart(fig_u, use_container_width=True)
 
         st.divider()
+        st.markdown('<div class="rf-section">🤖 AI Procurement Narrative (Gemma4)</div>', unsafe_allow_html=True)
 
-        # ── AI narrative ──
-        st.markdown("#### AI Procurement Narrative (Gemma4)")
-        if st.button("🤖 Generate AI Narrative", key="btn_needs_narrative"):
+        if st.button("Generate AI Action Plan", key="btn_needs_narrative"):
             with st.spinner("Gemma4 is writing the procurement action plan…"):
                 narrative = ai.generate_needs_narrative(needs_df, total_families=len(df))
                 st.session_state["needs_narrative"] = narrative
@@ -531,7 +617,256 @@ with tab_needs:
         if st.session_state.get("needs_narrative"):
             st.markdown(st.session_state["needs_narrative"])
         else:
-            st.caption("Click the button above to get Gemma4's action plan based on the needs table.")
+            st.caption("Click above to get Gemma4's prioritized procurement plan.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — Family Profile
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab_detail:
+    sorted_opts = df.sort_values("priority_score", ascending=False)
+    options = sorted_opts.apply(
+        lambda r: f"Family #{int(r['family_num']):03d}  ·  {r.get('city','?')}  ·  {r['priority_tier']}  (score {r['priority_score']})",
+        axis=1,
+    ).tolist()
+
+    if not options:
+        st.markdown('<div class="rf-info">No families match the current filters.</div>', unsafe_allow_html=True)
+        st.stop()
+
+    selected_label = st.selectbox("Select a family to view", options, label_visibility="visible")
+    selected_idx   = options.index(selected_label)
+    row            = sorted_opts.iloc[selected_idx]
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left_col, right_col = st.columns([1, 1])
+
+    # ── left: record details ──
+    with left_col:
+        tier = row.get("priority_tier", "LOW")
+        score = row.get("priority_score", 0)
+
+        st.markdown(f"""
+        <div class="detail-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div style="font-weight:700;font-size:1.05em;color:#1e293b;">
+              Family #{int(row['family_num']):03d}
+            </div>
+            <span class="badge badge-{tier}">{tier}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Priority Score</span>
+            <span class="detail-value">{score} / 150</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Family Size</span>
+            <span class="detail-value">{row.get('family_size', '—')} members</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">City</span>
+            <span class="detail-value">{row.get('city', '—')}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Source</span>
+            <span class="detail-value">{row.get('source_file', '—')}</span>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Vulnerability signals
+        sigs_present = [lbl for col, lbl in SIGNAL_LABELS.items() if row.get(col, False)]
+        if sigs_present:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(
+                '<div class="rf-section">Vulnerability Signals</div>'
+                + "".join(f'<span class="pill">{s}</span>' for s in sigs_present),
+                unsafe_allow_html=True,
+            )
+
+        # Score gauge
+        st.markdown("<br>", unsafe_allow_html=True)
+        gauge = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=int(score),
+            domain={"x": [0, 1], "y": [0, 1]},
+            title={"text": "Vulnerability Score", "font": {"size": 13}},
+            gauge={
+                "axis": {"range": [0, 150], "tickwidth": 1},
+                "bar": {"color": TIER_COLORS.get(tier, "#64748b")},
+                "steps": [
+                    {"range": [0, 25],   "color": "#f0fdf4"},
+                    {"range": [25, 50],  "color": "#fefce8"},
+                    {"range": [50, 80],  "color": "#fff7ed"},
+                    {"range": [80, 150], "color": "#fef2f2"},
+                ],
+                "threshold": {"line": {"color": "#dc2626", "width": 2}, "value": 80},
+            },
+        ))
+        gauge.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=10),
+                            paper_bgcolor="white", font=dict(color="#1e293b"))
+        st.plotly_chart(gauge, use_container_width=True)
+
+        # Raw record
+        with st.expander("View raw record fields"):
+            skip = {"family_id", "family_num", "priority_score", "priority_tier",
+                    "source_file", "source_sheet", "city"}
+            for k, v in row.items():
+                if k in skip or k.startswith("is_") or k in ("has_medical", "has_disability"):
+                    continue
+                if pd.notna(v) and str(v).strip() not in ("", "nan"):
+                    st.markdown(f"**{k}:** {v}")
+
+    # ── right: AI profile + needs ──
+    with right_col:
+        st.markdown('<div class="rf-section">AI Profile (Gemma4)</div>', unsafe_allow_html=True)
+
+        if st.button("🤖  Analyse Family", key="btn_profile", use_container_width=True):
+            with st.spinner("Gemma4 is analysing this family…"):
+                profile = ai.parse_family(row)
+                st.session_state.setdefault("ai_cache", {})[row["family_id"]] = profile
+
+        cached = st.session_state.get("ai_cache", {}).get(row["family_id"], {})
+        if cached:
+            if cached.get("summary_en"):
+                st.markdown(
+                    f'<div class="rf-info" style="margin-bottom:12px;">{cached["summary_en"]}</div>',
+                    unsafe_allow_html=True,
+                )
+            ai_fields = {
+                "Family head role": cached.get("family_head_role", "—"),
+                "Housing status":   cached.get("housing_status", "—"),
+                "Location (AI)":    cached.get("city", "—"),
+                "Widow":            "Yes" if cached.get("is_widow") else "No",
+                "Orphan family":    "Yes" if cached.get("is_orphan_family") else "No",
+                "Displaced":        "Yes" if cached.get("is_displaced") else "No",
+                "No income":        "Yes" if cached.get("is_unemployed") else "No",
+            }
+            rows_html = "".join(
+                f'<div class="detail-row"><span class="detail-label">{k}</span>'
+                f'<span class="detail-value">{v}</span></div>'
+                for k, v in ai_fields.items()
+            )
+            if cached.get("medical_conditions"):
+                conditions = ", ".join(cached["medical_conditions"])
+                rows_html += (
+                    f'<div class="detail-row"><span class="detail-label">Medical conditions</span>'
+                    f'<span class="detail-value">{conditions}</span></div>'
+                )
+            st.markdown(f'<div class="detail-card">{rows_html}</div>', unsafe_allow_html=True)
+        else:
+            st.caption("Click **Analyse Family** to generate an AI profile for this family.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown('<div class="rf-section">Needs List (Gemma4)</div>', unsafe_allow_html=True)
+
+        if st.button("📋  Generate Needs List", key="btn_needs_fam", use_container_width=True):
+            with st.spinner("Gemma4 is generating needs list…"):
+                needs_list = ai.generate_needs(row)
+                st.session_state.setdefault("ai_cache", {})[row["family_id"] + "_needs"] = needs_list
+
+        cached_needs = st.session_state.get("ai_cache", {}).get(row["family_id"] + "_needs", [])
+        if cached_needs:
+            urg_icon = {"critical": "🔴", "high": "🟠", "medium": "🟡"}
+            cat_icon = {
+                "food": "🍞", "medical": "💊", "shelter": "🏠", "education": "📚",
+                "hygiene": "🧼", "clothing": "👕", "financial": "💵",
+                "psychosocial": "🧠", "other": "📦",
+            }
+            for need in cached_needs:
+                urg = need.get("urgency", "medium")
+                cat = need.get("category", "other")
+                st.markdown(
+                    f'<div class="need-{urg}">'
+                    f'{urg_icon.get(urg,"🟡")} {cat_icon.get(cat,"📦")} '
+                    f'<strong>{need.get("item","?")}</strong>'
+                    f'<span style="color:#94a3b8;font-size:0.82em;margin-left:8px;">{cat}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.caption("Click **Generate Needs List** to get a specific needs assessment.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 5 — Smart Search
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab_query:
+    st.markdown(
+        '<div class="rf-info">Ask a question in plain English — Gemma4 will translate it into a '
+        'data filter and return matching families.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    EXAMPLE_QUERIES = [
+        "Show me all homeless families",
+        "Families with medical conditions",
+        "Widows with more than 4 members",
+        "Displaced families with no income",
+        "All critical priority families",
+        "Families from Masyaf",
+        "Orphan families in Homs",
+    ]
+
+    st.markdown('<div class="rf-section">Example queries — click to use</div>', unsafe_allow_html=True)
+    chip_cols = st.columns(4)
+    for i, q in enumerate(EXAMPLE_QUERIES):
+        if chip_cols[i % 4].button(q, key=f"chip_{i}", use_container_width=True):
+            st.session_state["query_text"] = q
+
+    question = st.text_input(
+        "Your question",
+        value=st.session_state.get("query_text", ""),
+        placeholder="e.g. Widows with children who have no income",
+        key="query_input",
+    )
+
+    if st.button("🔍  Search", type="primary") and question:
+        with st.spinner("Gemma4 is processing your query…"):
+            result_df, explanation = ai.answer_query(df, question)
+        st.session_state["query_result"]  = result_df
+        st.session_state["query_explain"] = explanation
+
+    result_df  = st.session_state.get("query_result",  pd.DataFrame())
+    explanation = st.session_state.get("query_explain", "")
+
+    if explanation:
+        st.markdown(f'<div class="rf-info"><strong>Gemma4:</strong> {explanation}</div>', unsafe_allow_html=True)
+
+    if not result_df.empty:
+        st.markdown(
+            f'<div class="rf-success">Found <strong>{len(result_df)}</strong> matching families</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.dataframe(
+            df_display(result_df.sort_values("priority_score", ascending=False)),
+            column_config={
+                "family_num":       st.column_config.NumberColumn("#", width="small"),
+                "priority_tier":    st.column_config.TextColumn("Tier", width="small"),
+                "priority_score":   st.column_config.ProgressColumn("Score", min_value=0, max_value=150, width="medium"),
+                "family_size":      st.column_config.NumberColumn("Members", width="small"),
+                "city":             st.column_config.TextColumn("City", width="small"),
+                "need_type":        st.column_config.TextColumn("Need", width="large"),
+                "is_widow":         st.column_config.TextColumn("Widow", width="small"),
+                "is_orphan_family": st.column_config.TextColumn("Orphans", width="small"),
+                "is_displaced":     st.column_config.TextColumn("Displaced", width="small"),
+                "has_medical":      st.column_config.TextColumn("Medical", width="small"),
+                "is_unemployed":    st.column_config.TextColumn("No Income", width="small"),
+                "source_file":      st.column_config.TextColumn("Source", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=400,
+        )
+        csv_q = result_df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("⬇  Export results (CSV)", data=csv_q,
+                           file_name="search_results.csv", mime="text/csv")
+    elif explanation:
+        st.warning("No matching families found, or the query could not be executed.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -539,42 +874,41 @@ with tab_needs:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_insights:
-    st.subheader("AI Insights — aggregate analysis by Gemma4")
-    st.caption("Gemma4 analyses the full dataset and provides actionable recommendations.")
+    st.markdown(
+        '<div class="rf-info">Gemma4 analyses the full dataset and produces actionable '
+        'recommendations for your organisation.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("🧠 Generate Insights", type="primary"):
-        with st.spinner("Gemma4 is analysing the full dataset…"):
+    if st.button("🧠  Generate Strategic Insights", type="primary"):
+        with st.spinner("Gemma4 is analysing the dataset…"):
             insights = ai.generate_aggregate_insights(df)
             st.session_state["insights"] = insights
 
     if st.session_state.get("insights"):
         st.markdown(st.session_state["insights"])
     else:
-        st.info("Click **Generate Insights** to get Gemma4's analysis of the current dataset.")
+        st.markdown(
+            '<div style="text-align:center;padding:60px 0;color:#94a3b8;">'
+            '<div style="font-size:2.5em;margin-bottom:12px;">💡</div>'
+            'Click <strong>Generate Strategic Insights</strong> to get Gemma4\'s analysis.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
     st.divider()
-    st.subheader("Quick Statistics")
-
-    sig_summary = {
-        label: int(df.get(col, pd.Series([False] * len(df))).sum())
-        for col, label in SIGNAL_LABELS.items()
-        if col in df.columns
-    }
-    sig_summary_df = pd.DataFrame(
-        list(sig_summary.items()), columns=["Category", "Families"]
-    ).sort_values("Families", ascending=False)
-
-    st.dataframe(sig_summary_df, use_container_width=True, hide_index=True)
-
-    avg_score_by_city = (
-        df.groupby("city")["priority_score"].mean().sort_values(ascending=False).head(10).reset_index()
+    st.markdown('<div class="rf-section">Average Priority Score by City</div>', unsafe_allow_html=True)
+    city_scores = (
+        df.groupby("city")["priority_score"].mean()
+        .sort_values(ascending=False).head(10).reset_index()
     )
-    avg_score_by_city.columns = ["City", "Avg Priority Score"]
-    fig_city = px.bar(
-        avg_score_by_city, x="City", y="Avg Priority Score",
-        title="Average Priority Score by City (top 10)",
-        color="Avg Priority Score",
-        color_continuous_scale="Reds",
+    city_scores.columns = ["City", "Avg Score"]
+    fig_cs = px.bar(
+        city_scores, x="City", y="Avg Score",
+        color="Avg Score", color_continuous_scale=["#fde68a", "#dc2626"],
+        text_auto=".0f",
     )
-    fig_city.update_layout(plot_bgcolor="white")
-    st.plotly_chart(fig_city, use_container_width=True)
+    fig_cs.update_layout(**PLOTLY_BASE, coloraxis_showscale=False)
+    fig_cs.update_traces(textposition="outside")
+    st.plotly_chart(fig_cs, use_container_width=True)

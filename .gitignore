@@ -4,4 +4,4 @@ __pycache__/
 *.pyo
 .DS_Store
 *.egg-info/
-.streamlit/
+.streamlit/secrets.toml
