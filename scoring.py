@@ -1,23 +1,48 @@
 import pandas as pd
 
-# Arabic keyword → boolean signal name
+# Arabic + English keywords for each vulnerability signal
 _SIGNALS: dict[str, list[str]] = {
-    "is_widow": ["أرملة", "ارملة", "أرمل"],
-    "is_orphan_family": ["أيتام", "ايتام", "يتيم", "المرحوم", "فقدان المعيل", "لايوجد معيل", "لا يوجد معيل"],
-    "is_displaced": ["تهجير", "مهجر", "نازح", "النازحين"],
+    "is_widow": [
+        "أرملة", "ارملة", "أرمل",
+        "widow", "widowed",
+    ],
+    "is_orphan_family": [
+        "أيتام", "ايتام", "يتيم", "المرحوم", "فقدان المعيل", "لايوجد معيل", "لا يوجد معيل",
+        "orphan", "orphans", "no breadwinner", "deceased father", "father passed",
+    ],
+    "is_displaced": [
+        "تهجير", "مهجر", "نازح", "النازحين",
+        "displaced", "displacement", "forced relocation", "evacuated", "refugee",
+    ],
     "has_medical": [
         "مريض", "مرض", "سرطان", "صرع", "قلب مفتوح", "قلب", "معاق", "إعاقة",
         "اعاقة", "شلل", "مشلول", "ضغط", "سكري", "أدوية", "ادوية", "علاج", "جريح",
+        "medical", "disease", "illness", "cancer", "epilepsy", "heart", "disability",
+        "paralysis", "diabetes", "medication", "treatment", "injured", "chronic",
     ],
-    "has_disability": ["معاق", "إعاقة", "اعاقة", "شلل", "مشلول", "جريح"],
+    "has_disability": [
+        "معاق", "إعاقة", "اعاقة", "شلل", "مشلول", "جريح",
+        "disabled", "disability", "paralyzed", "paralysis", "wheelchair", "amputee",
+    ],
     "is_unemployed": [
         "لايوجد دخل", "لا يوجد دخل", "لا دخل", "بلا دخل", "فقدان المعيل",
         "لايوجد معيل", "بدون راتب", "مفصول", "توقف مصدر الدخل", "فقر",
         "بدون إرث", "بدون ارث",
+        "no income", "no job", "unemployed", "unemployment", "no work", "jobless",
+        "no salary", "dismissed", "fired", "poverty", "no source of income",
     ],
-    "is_homeless": ["بدون منزل", "بلا منزل"],
-    "is_renting": ["أجار", "اجار", "ايجار", "إيجار", "سكن الأجار", "سكن اجار"],
-    "is_pregnant": ["حامل"],
+    "is_homeless": [
+        "بدون منزل", "بلا منزل",
+        "homeless", "no home", "no house", "no shelter", "living on street",
+    ],
+    "is_renting": [
+        "أجار", "اجار", "ايجار", "إيجار", "سكن الأجار", "سكن اجار",
+        "renting", "rent", "rental", "tenant", "leasing",
+    ],
+    "is_pregnant": [
+        "حامل",
+        "pregnant", "pregnancy", "expecting",
+    ],
 }
 
 _WEIGHTS: dict[str, int] = {
@@ -38,12 +63,12 @@ def _combined_text(row: pd.Series) -> str:
         "humanitarian_situation", "need_type", "contact_name",
         "additional_needs", "financial_support_note",
     ]
-    return " ".join(str(row.get(f, "") or "") for f in fields)
+    return " ".join(str(row.get(f, "") or "") for f in fields).lower()
 
 
 def extract_signals(row: pd.Series) -> dict[str, bool]:
     text = _combined_text(row)
-    return {sig: any(kw in text for kw in kws) for sig, kws in _SIGNALS.items()}
+    return {sig: any(kw.lower() in text for kw in kws) for sig, kws in _SIGNALS.items()}
 
 
 def compute_priority(row: pd.Series, signals: dict | None = None) -> dict:

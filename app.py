@@ -1,4 +1,6 @@
 """ReliefFlow — AI-powered humanitarian aid management (Gemma4 + Ollama)."""
+from pathlib import Path
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -8,6 +10,7 @@ from ingest import load_all_samples, load_excel
 from scoring import enrich_dataframe
 from needs import compute_aggregate_needs, CATEGORY_ICON, URGENCY_COLOR
 import ai
+import data_entry
 
 # ─── page config ──────────────────────────────────────────────────────────────
 
@@ -318,8 +321,9 @@ df: pd.DataFrame = df_full[
 
 # ─── tabs ─────────────────────────────────────────────────────────────────────
 
-tab_dash, tab_queue, tab_needs, tab_detail, tab_query, tab_insights = st.tabs([
+tab_dash, tab_log, tab_queue, tab_needs, tab_detail, tab_query, tab_insights = st.tabs([
     "🏠 Overview",
+    "➕ Log Entry",
     "🚨 Priority List",
     "📦 Needs Report",
     "👤 Family Profile",
@@ -457,7 +461,213 @@ with tab_dash:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — Priority List
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 2 — Log Entry (image + audio)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_PARSED_FIELDS = [
+    ("family_size",            "Family Size (# members)", "number"),
+    ("city",                   "City / Region",           "text"),
+    ("address",                "Full Address",            "text"),
+    ("humanitarian_situation", "Situation / Circumstances","area"),
+    ("need_type",              "Type of Need",            "text"),
+    ("phone",                  "Phone Number",            "text"),
+    ("intermediary",           "Intermediary / Referral", "text"),
+    ("additional_notes",       "Additional Notes",        "area"),
+]
+
+
+def _review_form(parsed: dict, key_prefix: str) -> dict:
+    """Render an editable confirmation form from parsed data. Returns edited values."""
+    st.markdown('<div class="rf-section">Review & Edit before adding</div>', unsafe_allow_html=True)
+    result = {}
+    for field, label, ftype in _PARSED_FIELDS:
+        val = parsed.get(field)
+        safe = "" if val is None else str(val)
+        if ftype == "number":
+            try:
+                num_val = int(float(safe)) if safe else 0
+            except ValueError:
+                num_val = 0
+            result[field] = st.number_input(label, value=num_val, min_value=0, key=f"{key_prefix}_{field}")
+        elif ftype == "area":
+            result[field] = st.text_area(label, value=safe, key=f"{key_prefix}_{field}", height=80)
+        else:
+            result[field] = st.text_input(label, value=safe, key=f"{key_prefix}_{field}")
+    return result
+
+
+with tab_log:
+    st.markdown(
+        '<div class="rf-info">'
+        'Field workers can log new family records without a laptop — snap a photo of a handwritten '
+        'form or record a voice message. Gemma4 parses the content into structured fields for review '
+        'before adding to the dataset. <strong>Everything runs locally — no internet required.</strong>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    sub_img, sub_audio = st.tabs(["📷  Scan Handwritten Form", "🎤  Voice Record"])
+
+    # ── IMAGE ──────────────────────────────────────────────────────────────────
+    with sub_img:
+        st.markdown('<div class="rf-section">Upload a photo of a handwritten or printed record</div>', unsafe_allow_html=True)
+        st.caption("Supports JPG, PNG, HEIC, PDF screenshots. Arabic and English handwriting supported.")
+
+        uploaded_img = st.file_uploader(
+            "Choose image",
+            type=["jpg", "jpeg", "png", "webp", "bmp"],
+            key="log_img_upload",
+            label_visibility="collapsed",
+        )
+
+        if uploaded_img:
+            img_bytes = uploaded_img.read()
+
+            col_img, col_parse = st.columns([1, 1])
+            with col_img:
+                st.image(img_bytes, caption="Uploaded image", use_container_width=True)
+
+            with col_parse:
+                if st.button("🔍  Parse with Gemma4", type="primary", key="btn_parse_img"):
+                    with st.spinner("Gemma4 is reading the form…"):
+                        parsed = ai.parse_image_record(img_bytes)
+                    if parsed:
+                        st.session_state["log_img_parsed"] = parsed
+                        st.markdown(
+                            f'<div class="rf-success">Parsed with <strong>{parsed.get("confidence","?")}</strong> confidence. Review below.</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.error("Could not extract data from this image. Try a clearer photo.")
+
+        parsed_img = st.session_state.get("log_img_parsed", {})
+        if parsed_img:
+            st.divider()
+            edited_img = _review_form(parsed_img, key_prefix="img")
+
+            if st.button("✅  Add to Dataset", type="primary", key="btn_add_img"):
+                if "df" not in st.session_state:
+                    st.session_state["df"] = enrich_dataframe(__import__("pandas").DataFrame())
+                st.session_state["df"] = data_entry.add_record(edited_img, st.session_state["df"])
+                st.session_state.pop("log_img_parsed", None)
+                st.session_state.pop("needs_df", None)
+                new_num = int(st.session_state["df"]["family_num"].max())
+                st.markdown(
+                    f'<div class="rf-success">✓ Family <strong>#{new_num:03d}</strong> added to the dataset.</div>',
+                    unsafe_allow_html=True,
+                )
+        else:
+            if not uploaded_img:
+                st.markdown(
+                    '<div style="text-align:center;padding:50px 0;color:#94a3b8;">'
+                    '<div style="font-size:2.5em;margin-bottom:10px;">📷</div>'
+                    'Upload a photo of a handwritten record to get started.'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ── AUDIO ──────────────────────────────────────────────────────────────────
+    with sub_audio:
+        st.markdown('<div class="rf-section">Record or upload a voice message describing a family</div>', unsafe_allow_html=True)
+        st.caption("The worker describes the family verbally — Whisper transcribes locally, Gemma4 extracts the fields.")
+
+        audio_input_col, upload_col = st.columns([1, 1])
+
+        with audio_input_col:
+            st.markdown("**Record directly in browser**")
+            recorded = st.audio_input("Record message", key="log_audio_recorder", label_visibility="collapsed")
+
+        with upload_col:
+            st.markdown("**Or upload an audio file**")
+            uploaded_audio = st.file_uploader(
+                "Audio file",
+                type=["wav", "mp3", "m4a", "ogg", "webm"],
+                key="log_audio_upload",
+                label_visibility="collapsed",
+            )
+
+        # Determine active audio source
+        audio_bytes  = None
+        audio_suffix = ".wav"
+        if recorded:
+            audio_bytes  = recorded.read()
+            audio_suffix = ".wav"
+        elif uploaded_audio:
+            audio_bytes  = uploaded_audio.read()
+            audio_suffix = Path(uploaded_audio.name).suffix or ".wav"
+
+        if audio_bytes:
+            st.audio(audio_bytes, format="audio/wav")
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if st.button("🎙  Transcribe with Whisper", type="primary", key="btn_transcribe"):
+                with st.spinner("Transcribing audio locally (first run downloads ~145 MB Whisper model)…"):
+                    try:
+                        text, lang = data_entry.transcribe(audio_bytes, audio_suffix)
+                        st.session_state["log_audio_transcript"] = text
+                        st.session_state["log_audio_lang"]       = lang
+                    except Exception as e:
+                        st.error(f"Transcription failed: {e}")
+
+        transcript = st.session_state.get("log_audio_transcript", "")
+        lang       = st.session_state.get("log_audio_lang", "")
+
+        if transcript:
+            st.markdown('<div class="rf-section">Transcription</div>', unsafe_allow_html=True)
+            if lang:
+                st.caption(f"Detected language: **{lang}**")
+            transcript = st.text_area(
+                "Edit transcription if needed",
+                value=transcript,
+                height=120,
+                key="log_audio_transcript_edit",
+                label_visibility="collapsed",
+            )
+            st.session_state["log_audio_transcript"] = transcript
+
+            if st.button("🤖  Parse with Gemma4", type="primary", key="btn_parse_audio"):
+                with st.spinner("Gemma4 is extracting family information…"):
+                    parsed_audio = ai.parse_text_record(transcript)
+                if parsed_audio:
+                    st.session_state["log_audio_parsed"] = parsed_audio
+                    st.markdown(
+                        f'<div class="rf-success">Parsed with <strong>{parsed_audio.get("confidence","?")}</strong> confidence. Review below.</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.error("Could not extract structured data. Try rephrasing the message.")
+
+        parsed_audio = st.session_state.get("log_audio_parsed", {})
+        if parsed_audio:
+            st.divider()
+            edited_audio = _review_form(parsed_audio, key_prefix="audio")
+
+            if st.button("✅  Add to Dataset", type="primary", key="btn_add_audio"):
+                if "df" not in st.session_state:
+                    st.session_state["df"] = enrich_dataframe(__import__("pandas").DataFrame())
+                st.session_state["df"] = data_entry.add_record(edited_audio, st.session_state["df"])
+                st.session_state.pop("log_audio_parsed", None)
+                st.session_state.pop("log_audio_transcript", None)
+                st.session_state.pop("needs_df", None)
+                new_num = int(st.session_state["df"]["family_num"].max())
+                st.markdown(
+                    f'<div class="rf-success">✓ Family <strong>#{new_num:03d}</strong> added to the dataset.</div>',
+                    unsafe_allow_html=True,
+                )
+        elif not transcript:
+            st.markdown(
+                '<div style="text-align:center;padding:50px 0;color:#94a3b8;">'
+                '<div style="font-size:2.5em;margin-bottom:10px;">🎤</div>'
+                'Record a voice message or upload an audio file to get started.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 3 — Priority List
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_queue:

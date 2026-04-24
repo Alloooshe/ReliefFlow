@@ -1,4 +1,5 @@
 """Gemma4 (via Ollama) interface for ReliefFlow."""
+import base64
 import json
 import re
 
@@ -25,6 +26,51 @@ def _extract_json_object(text: str) -> dict:
         except json.JSONDecodeError:
             pass
     return {}
+
+
+_RECORD_FIELDS_PROMPT = """
+Extract family welfare record information and return ONLY a JSON object — no explanation, no markdown.
+
+JSON structure:
+{
+  "family_size": integer or null,
+  "address": "full address text or null",
+  "city": "city name or null",
+  "humanitarian_situation": "description of situation / circumstances",
+  "need_type": "type of aid or help needed",
+  "phone": "phone number as string or null",
+  "intermediary": "name of referral person or null",
+  "additional_notes": "any other relevant details or null",
+  "confidence": "high|medium|low"
+}
+Use null for any field that is missing or unclear.
+"""
+
+
+def parse_image_record(image_bytes: bytes) -> dict:
+    """Parse a handwritten or printed welfare form photo using Gemma4 vision."""
+    img_b64 = base64.b64encode(image_bytes).decode()
+    prompt = (
+        "You are helping a charity digitize a humanitarian aid family welfare record.\n"
+        "The image shows a handwritten or printed form, possibly in Arabic and/or English.\n"
+        + _RECORD_FIELDS_PROMPT
+    )
+    resp = ollama.chat(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt, "images": [img_b64]}],
+    )
+    return _extract_json_object(resp["message"]["content"])
+
+
+def parse_text_record(text: str) -> dict:
+    """Parse a free-text record (voice transcription or typed notes) using Gemma4."""
+    prompt = (
+        "A humanitarian aid field worker described a family in need verbally or in notes.\n"
+        "Here is the text (may be in Arabic, English, or mixed):\n\n"
+        f'"""\n{text}\n"""\n\n'
+        + _RECORD_FIELDS_PROMPT
+    )
+    return _extract_json_object(_chat(prompt))
 
 
 def _extract_json_array(text: str) -> list:
