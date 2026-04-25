@@ -21,7 +21,11 @@ import plotly.graph_objects as go
 
 from ingest import load_all_samples, load_excel
 from scoring import enrich_dataframe
-from needs import compute_aggregate_needs, CATEGORY_ICON, URGENCY_COLOR
+from needs import (
+    compute_aggregate_needs, compute_food_rations, compute_medical_supplies,
+    compute_financial_needs, CATEGORY_ICON, URGENCY_COLOR, RATION_BASKET,
+    RATION_BASE_PEOPLE, FINANCIAL_RATES,
+)
 import ai
 import data_entry
 
@@ -247,6 +251,11 @@ with st.sidebar:
                         "insights": None,
                         "needs_df": pd.DataFrame(),
                         "needs_narrative": None,
+                        "food_agg_df": pd.DataFrame(),
+                        "food_fam_df": pd.DataFrame(),
+                        "medical_df": pd.DataFrame(),
+                        "fin_fam_df": pd.DataFrame(),
+                        "fin_totals": {},
                     })
                 n = len(st.session_state["df"])
                 st.success(f"✓ {n} families loaded")
@@ -264,6 +273,11 @@ with st.sidebar:
                     "insights": None,
                     "needs_df": pd.DataFrame(),
                     "needs_narrative": None,
+                    "food_agg_df": pd.DataFrame(),
+                    "food_fam_df": pd.DataFrame(),
+                    "medical_df": pd.DataFrame(),
+                    "fin_fam_df": pd.DataFrame(),
+                    "fin_totals": {},
                 })
                 st.success(f"✓ {len(st.session_state['df'])} families loaded")
 
@@ -581,7 +595,8 @@ with tab_log:
                     st.session_state["df"] = enrich_dataframe(__import__("pandas").DataFrame())
                 st.session_state["df"] = data_entry.add_record(edited_img, st.session_state["df"])
                 st.session_state.pop("log_img_parsed", None)
-                st.session_state.pop("needs_df", None)
+                for _k in ("needs_df", "food_agg_df", "food_fam_df", "medical_df", "fin_fam_df", "fin_totals"):
+                    st.session_state.pop(_k, None)
                 new_num = int(st.session_state["df"]["family_num"].max())
                 st.markdown(
                     f'<div class="rf-success">✓ Family <strong>#{new_num:03d}</strong> added to the dataset.</div>',
@@ -679,7 +694,8 @@ with tab_log:
                 st.session_state["df"] = data_entry.add_record(edited_audio, st.session_state["df"])
                 st.session_state.pop("log_audio_parsed", None)
                 st.session_state.pop("log_audio_transcript", None)
-                st.session_state.pop("needs_df", None)
+                for _k in ("needs_df", "food_agg_df", "food_fam_df", "medical_df", "fin_fam_df", "fin_totals"):
+                    st.session_state.pop(_k, None)
                 new_num = int(st.session_state["df"]["family_num"].max())
                 st.markdown(
                     f'<div class="rf-success">✓ Family <strong>#{new_num:03d}</strong> added to the dataset.</div>',
@@ -751,55 +767,209 @@ with tab_queue:
 
 with tab_needs:
     st.markdown(
-        '<div class="rf-info">Rule-based needs are computed instantly from vulnerability signals. '
-        'Click <strong>Generate Needs List</strong> to build the table, then optionally ask Gemma4 '
-        'to turn it into a procurement action plan.</div>',
+        '<div class="rf-info">All estimates are computed instantly from vulnerability signals — '
+        'no AI required. Financial rates and ration quantities reflect approximate regional costs '
+        'and should be adjusted to your context.</div>',
         unsafe_allow_html=True,
     )
     st.markdown("<br>", unsafe_allow_html=True)
 
-    if st.button("📦  Generate Aggregate Needs List", type="primary"):
+    if st.button("📦  Generate Full Needs Report", type="primary"):
         with st.spinner("Computing needs across all families…"):
-            _needs = compute_aggregate_needs(df)
-            st.session_state["needs_df"] = _needs
+            st.session_state["needs_df"]      = compute_aggregate_needs(df)
             st.session_state["needs_narrative"] = None
+            _food_fam, _food_agg              = compute_food_rations(df)
+            st.session_state["food_fam_df"]   = _food_fam
+            st.session_state["food_agg_df"]   = _food_agg
+            st.session_state["medical_df"]    = compute_medical_supplies(df)
+            _fin_fam, _fin_totals             = compute_financial_needs(df)
+            st.session_state["fin_fam_df"]    = _fin_fam
+            st.session_state["fin_totals"]    = _fin_totals
 
-    needs_df: pd.DataFrame = st.session_state.get("needs_df", pd.DataFrame())
+    needs_df:    pd.DataFrame = st.session_state.get("needs_df",    pd.DataFrame())
+    food_agg_df: pd.DataFrame = st.session_state.get("food_agg_df", pd.DataFrame())
+    food_fam_df: pd.DataFrame = st.session_state.get("food_fam_df", pd.DataFrame())
+    medical_df:  pd.DataFrame = st.session_state.get("medical_df",  pd.DataFrame())
+    fin_fam_df:  pd.DataFrame = st.session_state.get("fin_fam_df",  pd.DataFrame())
+    fin_totals:  dict         = st.session_state.get("fin_totals",  {})
 
     if needs_df.empty:
         st.markdown(
             '<div style="text-align:center;padding:60px 0;color:#94a3b8;">'
             '<div style="font-size:2.5em;margin-bottom:12px;">📦</div>'
-            'Click the button above to generate the needs list for the current dataset.'
+            'Click the button above to generate the full needs report for the current dataset.'
             '</div>',
             unsafe_allow_html=True,
         )
     else:
+        # ── Section 1: Food Ration Planning ───────────────────────────────────
+        st.markdown('<div class="rf-section">🍞 Food Ration Planning</div>', unsafe_allow_html=True)
+
+        total_packs = int(food_fam_df["Ration Packs"].sum()) if not food_fam_df.empty else 0
+        total_people_food = int(food_fam_df["Family Size"].sum()) if not food_fam_df.empty else 0
+
+        fc1, fc2, fc3 = st.columns(3)
+        fc1.markdown(card(f"{total_packs:,}", "Total ration packs / month", f"base: {RATION_BASE_PEOPLE} people per pack", ""), unsafe_allow_html=True)
+        fc2.markdown(card(f"{total_people_food:,}", "Total individuals covered", "", ""), unsafe_allow_html=True)
+        fc3.markdown(card(len(RATION_BASKET), "Items per ration basket", "monthly", ""), unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        basket_col, total_col = st.columns(2)
+
+        with basket_col:
+            st.markdown('<div class="rf-section">Standard basket — 4 people / month</div>', unsafe_allow_html=True)
+            basket_df = pd.DataFrame(RATION_BASKET)
+            basket_df.columns = ["Item", "Qty", "Unit"]
+            st.dataframe(basket_df, hide_index=True, use_container_width=True, height=380)
+
+        with total_col:
+            st.markdown('<div class="rf-section">Total quantities needed — all families</div>', unsafe_allow_html=True)
+            if not food_agg_df.empty:
+                st.dataframe(
+                    food_agg_df[["Item", "Unit", "Total needed"]],
+                    column_config={
+                        "Item":         st.column_config.TextColumn("Item", width="large"),
+                        "Unit":         st.column_config.TextColumn("Unit", width="small"),
+                        "Total needed": st.column_config.NumberColumn("Total needed", format="%.1f", width="medium"),
+                    },
+                    hide_index=True, use_container_width=True, height=380,
+                )
+                csv_food = food_agg_df.to_csv(index=False).encode("utf-8-sig")
+                st.download_button("⬇ Export food quantities (CSV)", data=csv_food,
+                                   file_name="food_quantities.csv", mime="text/csv")
+
+        with st.expander("Per-family ration allocation"):
+            if not food_fam_df.empty:
+                st.dataframe(
+                    food_fam_df,
+                    column_config={
+                        "Family #":     st.column_config.NumberColumn("Family #", width="small"),
+                        "Family Size":  st.column_config.NumberColumn("Family Size", width="small"),
+                        "Ration Packs": st.column_config.ProgressColumn(
+                            "Ration Packs", min_value=0,
+                            max_value=int(food_fam_df["Ration Packs"].max()),
+                            width="large",
+                        ),
+                    },
+                    hide_index=True, use_container_width=True, height=300,
+                )
+
+        st.divider()
+
+        # ── Section 2: Medical Supplies ───────────────────────────────────────
+        st.markdown('<div class="rf-section">💊 Medical Supplies Estimation</div>', unsafe_allow_html=True)
+
+        if medical_df.empty:
+            st.caption("No medical signals detected in the current dataset.")
+        else:
+            med_families = int(medical_df["Families"].max()) if not medical_df.empty else 0
+            mc1, mc2 = st.columns(2)
+            mc1.markdown(card(len(medical_df), "Medical item types", "", "medical"), unsafe_allow_html=True)
+            mc2.markdown(card(med_families, "Families requiring medical supplies", "", "critical"), unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.dataframe(
+                medical_df,
+                column_config={
+                    "Item":      st.column_config.TextColumn("Item", width="large"),
+                    "Unit":      st.column_config.TextColumn("Unit", width="medium"),
+                    "Families":  st.column_config.ProgressColumn(
+                        "Families", min_value=0, max_value=int(medical_df["Families"].max()), width="medium"
+                    ),
+                    "Total Qty": st.column_config.NumberColumn("Total Qty", width="small"),
+                },
+                hide_index=True, use_container_width=True,
+            )
+            csv_med = medical_df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button("⬇ Export medical list (CSV)", data=csv_med,
+                               file_name="medical_supplies.csv", mime="text/csv")
+
+        st.divider()
+
+        # ── Section 3: Financial Needs ─────────────────────────────────────────
+        st.markdown('<div class="rf-section">💵 Financial Needs Estimation</div>', unsafe_allow_html=True)
+
+        with st.expander("Rate assumptions (USD / month)"):
+            rate_df = pd.DataFrame([
+                {"Category": k, "Rate (USD)": v, "Applied to": "per person" if "person" in k else "per qualifying family"}
+                for k, v in FINANCIAL_RATES.items()
+            ])
+            st.dataframe(rate_df, hide_index=True, use_container_width=True)
+            st.caption("Adjust these rates in needs.py → FINANCIAL_RATES to match your operational context.")
+
+        if fin_totals:
+            grand = fin_totals.get("Grand Total", 0)
+            fn1, fn2, fn3, fn4 = st.columns(4)
+            fn1.markdown(card(f"${grand:,}", "Total monthly budget needed", f"across {len(df)} families", "critical"), unsafe_allow_html=True)
+            fn2.markdown(card(f"${fin_totals.get('Food', 0):,}",    "Food",    "", ""), unsafe_allow_html=True)
+            fn3.markdown(card(f"${fin_totals.get('Medical', 0):,}", "Medical", "", "medical"), unsafe_allow_html=True)
+            fn4.markdown(card(f"${fin_totals.get('Rent', 0):,}",    "Rent",    "", ""), unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            fin_left, fin_right = st.columns([3, 2])
+
+            with fin_left:
+                st.markdown('<div class="rf-section">Per-family monthly estimate</div>', unsafe_allow_html=True)
+                if not fin_fam_df.empty:
+                    st.dataframe(
+                        fin_fam_df,
+                        column_config={
+                            "Family #":        st.column_config.NumberColumn("Family #", width="small"),
+                            "Size":            st.column_config.NumberColumn("Size", width="small"),
+                            "Food $":          st.column_config.NumberColumn("Food $", format="$%d", width="small"),
+                            "Utilities $":     st.column_config.NumberColumn("Utilities $", format="$%d", width="small"),
+                            "Rent $":          st.column_config.NumberColumn("Rent $", format="$%d", width="small"),
+                            "Medical $":       st.column_config.NumberColumn("Medical $", format="$%d", width="small"),
+                            "Disability $":    st.column_config.NumberColumn("Disability $", format="$%d", width="small"),
+                            "Shelter $":       st.column_config.NumberColumn("Shelter $", format="$%d", width="small"),
+                            "Monthly Total $": st.column_config.ProgressColumn(
+                                "Monthly Total $", min_value=0,
+                                max_value=int(fin_fam_df["Monthly Total $"].max()),
+                                format="$%d", width="large",
+                            ),
+                        },
+                        hide_index=True, use_container_width=True, height=380,
+                    )
+                    csv_fin = fin_fam_df.to_csv(index=False).encode("utf-8-sig")
+                    st.download_button("⬇ Export financial estimates (CSV)", data=csv_fin,
+                                       file_name="financial_needs.csv", mime="text/csv")
+
+            with fin_right:
+                st.markdown('<div class="rf-section">Budget breakdown</div>', unsafe_allow_html=True)
+                breakdown = {k: v for k, v in fin_totals.items() if k != "Grand Total" and v > 0}
+                fig_fin = px.pie(
+                    names=list(breakdown.keys()),
+                    values=list(breakdown.values()),
+                    hole=0.45,
+                    color_discrete_sequence=px.colors.qualitative.Set2,
+                )
+                fig_fin.update_layout(**PLOTLY_BASE)
+                st.plotly_chart(fig_fin, use_container_width=True)
+
+        st.divider()
+
+        # ── Section 4: General Needs Overview ─────────────────────────────────
+        st.markdown('<div class="rf-section">📋 General Needs Overview</div>', unsafe_allow_html=True)
+
         n_crit_n  = int((needs_df["urgency"] == "critical").sum())
         n_high_n  = int((needs_df["urgency"] == "high").sum())
         total_ins = int(needs_df["families_count"].sum())
 
         m1, m2, m3, m4 = st.columns(4)
-        m1.markdown(card(len(needs_df),        "Need types identified", "", ""), unsafe_allow_html=True)
-        m2.markdown(card(n_crit_n,             "Critical need types",  "", "critical"), unsafe_allow_html=True)
-        m3.markdown(card(n_high_n,             "High-priority types",  "", "high"), unsafe_allow_html=True)
-        m4.markdown(card(f"{total_ins:,}",     "Total need instances", "", ""), unsafe_allow_html=True)
+        m1.markdown(card(len(needs_df),    "Need types identified", "", ""),           unsafe_allow_html=True)
+        m2.markdown(card(n_crit_n,         "Critical need types",  "", "critical"),    unsafe_allow_html=True)
+        m3.markdown(card(n_high_n,         "High-priority types",  "", "high"),        unsafe_allow_html=True)
+        m4.markdown(card(f"{total_ins:,}", "Total need instances", "", ""),            unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-
         tbl_col, chart_col = st.columns([3, 2])
 
         with tbl_col:
-            st.markdown('<div class="rf-section">Needs by Family Count</div>', unsafe_allow_html=True)
-
             dn = needs_df.copy()
             dn.insert(0, "Icon", dn["category"].map(lambda c: CATEGORY_ICON.get(c, "📦")))
             dn = dn.rename(columns={
-                "need_item":      "Need",
-                "category":       "Category",
-                "urgency":        "Urgency",
-                "families_count": "Families",
-                "pct_of_total":   "% of Total",
+                "need_item": "Need", "category": "Category",
+                "urgency": "Urgency", "families_count": "Families", "pct_of_total": "% of Total",
             })
             st.dataframe(
                 dn[["Icon", "Need", "Category", "Urgency", "Families", "% of Total"]],
@@ -814,12 +984,10 @@ with tab_needs:
                     ),
                     "% of Total": st.column_config.NumberColumn("% of Total", format="%.1f%%", width="small"),
                 },
-                hide_index=True,
-                use_container_width=True,
-                height=400,
+                hide_index=True, use_container_width=True, height=380,
             )
             csv_needs = needs_df.to_csv(index=False).encode("utf-8-sig")
-            st.download_button("⬇  Export needs list (CSV)", data=csv_needs,
+            st.download_button("⬇ Export needs list (CSV)", data=csv_needs,
                                file_name="aggregate_needs.csv", mime="text/csv")
 
         with chart_col:
@@ -828,7 +996,9 @@ with tab_needs:
                 needs_df.groupby("category")["families_count"].sum()
                 .sort_values(ascending=True).reset_index()
             )
-            cat_s["label"] = cat_s["category"].map(lambda c: CATEGORY_ICON.get(c, "📦") + " " + c.capitalize())
+            cat_s["label"] = cat_s["category"].map(
+                lambda c: CATEGORY_ICON.get(c, "📦") + " " + c.capitalize()
+            )
             fig_c = px.bar(cat_s, x="families_count", y="label", orientation="h",
                            color_discrete_sequence=["#2563eb"])
             fig_c.update_layout(**PLOTLY_BASE, showlegend=False)
