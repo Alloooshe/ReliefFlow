@@ -197,6 +197,34 @@ def tier_badge(tier: str) -> str:
     return f'<span class="badge badge-{tier}">{tier}</span>'
 
 
+def html_table(df: pd.DataFrame, num_cols: list[str] | None = None) -> str:
+    """Render a DataFrame as a styled HTML table with guaranteed readable text."""
+    num_cols = set(num_cols or [])
+    th = "".join(
+        f'<th style="padding:8px 14px;text-align:left;font-weight:600;'
+        f'color:#64748b;font-size:0.78em;text-transform:uppercase;'
+        f'border-bottom:2px solid #e2e8f0;white-space:nowrap;">{c}</th>'
+        for c in df.columns
+    )
+    rows_html = ""
+    for _, row in df.iterrows():
+        tds = ""
+        for col, val in row.items():
+            align = "right" if col in num_cols else "left"
+            tds += (
+                f'<td style="padding:8px 14px;color:#1e293b;font-size:0.9em;'
+                f'border-bottom:1px solid #f1f5f9;text-align:{align};">{val}</td>'
+            )
+        rows_html += f"<tr>{tds}</tr>"
+    return (
+        '<div style="overflow-x:auto;">'
+        '<table style="width:100%;border-collapse:collapse;background:white;'
+        'border-radius:8px;overflow:hidden;">'
+        f"<thead><tr>{th}</tr></thead><tbody>{rows_html}</tbody>"
+        "</table></div>"
+    )
+
+
 def pills(row: pd.Series) -> str:
     return " ".join(
         f'<span class="pill">{lbl}</span>'
@@ -820,20 +848,15 @@ with tab_needs:
             st.markdown('<div class="rf-section">Standard basket — 4 people / month</div>', unsafe_allow_html=True)
             basket_df = pd.DataFrame(RATION_BASKET)
             basket_df.columns = ["Item", "Qty", "Unit"]
-            st.dataframe(basket_df, hide_index=True, use_container_width=True, height=380)
+            st.markdown(html_table(basket_df, num_cols=["Qty"]), unsafe_allow_html=True)
 
         with total_col:
             st.markdown('<div class="rf-section">Total quantities needed — all families</div>', unsafe_allow_html=True)
             if not food_agg_df.empty:
-                st.dataframe(
-                    food_agg_df[["Item", "Unit", "Total needed"]],
-                    column_config={
-                        "Item":         st.column_config.TextColumn("Item", width="large"),
-                        "Unit":         st.column_config.TextColumn("Unit", width="small"),
-                        "Total needed": st.column_config.NumberColumn("Total needed", format="%.1f", width="medium"),
-                    },
-                    hide_index=True, use_container_width=True, height=380,
-                )
+                disp = food_agg_df[["Item", "Unit", "Total needed"]].copy()
+                disp["Total needed"] = disp["Total needed"].apply(lambda x: f"{x:,.1f}")
+                st.markdown(html_table(disp, num_cols=["Total needed"]), unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
                 csv_food = food_agg_df.to_csv(index=False).encode("utf-8-sig")
                 st.download_button("⬇ Export food quantities (CSV)", data=csv_food,
                                    file_name="food_quantities.csv", mime="text/csv")
