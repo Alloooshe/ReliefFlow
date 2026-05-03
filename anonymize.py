@@ -20,6 +20,11 @@ MAIN_PII_COLS = {
     "رقم دفتر العائلة",
     "ملاحظات عن العائلة",
     "ملاحظات عن العائلة لم تذكر سابقا",
+    # Community center name (identifies the organization)
+    "المركز المجتمعي",
+    # Original address (PII + may reference org landmarks)
+    "عنوان العائلة الأصلي (إذا كانت نازحة من قريبة أخرى)",
+    "عنوان العائلة الأصلي",
     "_uuid",
     "_submitted_by",
     "_notes",
@@ -28,6 +33,8 @@ MAIN_PII_COLS = {
 }
 
 MEMBERS_PII_COLS = {
+    # KoBoToolbox metadata containing org name
+    "_parent_table_name",
     "الاسم الاول",
     "الكنية",
     "اسم الاب",
@@ -48,6 +55,7 @@ MEMBERS_PII_COLS = {
 }
 
 DAMAGE_PII_COLS = {
+    "_parent_table_name",
     "معلومات تفصيلية عن الضرر",
     "_submission__uuid",
     "_submission__submitted_by",
@@ -57,6 +65,7 @@ DAMAGE_PII_COLS = {
 }
 
 NEEDS_PII_COLS = {
+    "_parent_table_name",
     "تفاصيل الاحتياج",
     "تحديد الاحتياج (غير مذكور سابقا)",
     "تحديد الاحتياج (في حال غير مذكور سابقا)",
