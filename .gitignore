@@ -9,3 +9,7 @@ __pycache__/
 # Raw / PII-containing inputs — never commit. Use `data_anonymized.xlsx` instead.
 data_sample*.xlsx
 _inspect_samples.py
+
+# Data files — kept local only
+data/
+data_anonymized/
