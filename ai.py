@@ -227,7 +227,6 @@ Rules:
 
     result = _chat(prompt)
 
-    # Extract filter line
     filter_match = re.search(r"FILTER:\s*(df\[.+\])", result, re.DOTALL)
     explanation_match = re.search(r"EXPLANATION:\s*(.+)", result)
 
@@ -245,3 +244,131 @@ Rules:
         return pd.DataFrame(), f"Filter error: {e}"
 
     return pd.DataFrame(), explanation
+
+
+def smart_query(df: pd.DataFrame, question: str) -> dict:
+    """
+    Route question to filter path or analytics path.
+    Returns dict with keys:
+      type: 'filter' | 'analytics' | 'error'
+      explanation: str
+      result_df: pd.DataFrame | None   (filter results or breakdown table)
+      answer: str | None               (analytics answer text)
+    """
+    import needs as _needs
+
+    # Step 1: classify intent
+    classify_prompt = f"""Classify this question about humanitarian aid data. Reply with ONE word only: FILTER or ANALYTICS.
+
+FILTER: questions that want to see a list of families matching some criteria.
+Examples: "show homeless families", "widows with children", "families in Tartus", "critical priority families"
+
+ANALYTICS: questions that want a calculated number or procurement quantity.
+Examples: "how many food baskets", "how much rice do we need", "total families with medical needs", "budget estimate for Homs", "how many blankets", "what is the total cost"
+
+Question: {question}
+
+Reply with ONE word: FILTER or ANALYTICS"""
+
+    intent = _chat(classify_prompt).strip().upper()
+    intent = "ANALYTICS" if "ANALYTICS" in intent else "FILTER"
+
+    if intent == "FILTER":
+        result_df, explanation = answer_query(df, question)
+        return {
+            "type": "filter",
+            "explanation": explanation,
+            "result_df": result_df,
+            "answer": None,
+        }
+
+    # Analytics path: ask Gemma4 to write a Python expression
+    col_info = "\n".join(
+        f"  - {c} ({df[c].dtype}): e.g. {repr(df[c].dropna().iloc[0]) if not df[c].dropna().empty else 'N/A'}"
+        for c in df.columns
+        if df[c].dtype != object or c in ("city", "governorate", "displacement_type", "housing_type", "need_type", "priority_tier")
+    )
+
+    analytics_prompt = f"""You are a humanitarian data analyst. Answer the user's question by writing Python code.
+
+Available objects:
+- df: pandas DataFrame with one row per family. Key columns:
+{col_info}
+- needs.compute_food_rations(filtered_df): returns (per_family_df, agg_items_df) — agg_items_df has columns [Item, Unit, Qty/basket, Total needed]
+- needs.compute_medical_supplies(filtered_df): returns DataFrame with columns [Item, Unit, Families, Total Qty]
+- needs.compute_financial_needs(filtered_df): returns (per_family_df, totals_dict) — totals_dict has category→USD and "Grand Total"
+- needs.compute_aggregate_needs(filtered_df): returns DataFrame with [need_item, category, urgency, families_count, pct_of_total]
+
+User question: {question}
+
+Write Python code that:
+1. Optionally filters df to a subset (e.g. by city/governorate)
+2. Calls the appropriate needs function OR computes directly from df
+3. Stores final answer as variable named `answer` (string with the key number/result)
+4. Optionally stores a breakdown table as variable named `table` (pandas DataFrame or None)
+
+Reply in this exact format:
+CODE:
+```python
+<your code here — use df, needs, pd as available names>
+```
+EXPLANATION: <one sentence describing what you computed>
+
+Rules:
+- Use .str.contains(X, case=False, na=False) for location filtering
+- `answer` must be a human-readable string (e.g. "1,234 food baskets needed" or "$45,200 total budget")
+- `table` is optional; set table = None if no breakdown needed
+- Do not use print(), return, or import statements"""
+
+    result = _chat(analytics_prompt)
+
+    code_match = re.search(r"CODE:\s*```python\s*([\s\S]+?)```", result)
+    explanation_match = re.search(r"EXPLANATION:\s*(.+)", result)
+    explanation = explanation_match.group(1).strip() if explanation_match else question
+
+    if not code_match:
+        # Fallback: try to answer directly with plain text
+        fallback_prompt = f"""Answer this question about Syrian humanitarian aid data in 1-2 sentences.
+The dataset has {len(df)} families, {int(df['family_size'].sum())} total members.
+Key stats: {int(df['is_displaced'].sum())} displaced, {int(df['has_medical'].sum())} with medical needs,
+{int(df['is_homeless'].sum())} homeless.
+Cities represented: {', '.join(df['city'].value_counts().head(5).index.tolist())}
+
+Question: {question}"""
+        fallback_answer = _chat(fallback_prompt)
+        return {
+            "type": "analytics",
+            "explanation": explanation,
+            "result_df": None,
+            "answer": fallback_answer.strip(),
+        }
+
+    code = code_match.group(1).strip()
+
+    # Execute in sandboxed namespace
+    namespace = {
+        "df": df.copy(),
+        "needs": _needs,
+        "pd": pd,
+        "answer": None,
+        "table": None,
+    }
+    try:
+        exec(code, namespace)  # noqa: S102
+        answer = str(namespace.get("answer") or "Computation complete — see table below.")
+        table = namespace.get("table")
+        if not isinstance(table, pd.DataFrame):
+            table = None
+        return {
+            "type": "analytics",
+            "explanation": explanation,
+            "result_df": table,
+            "answer": answer,
+        }
+    except Exception as e:
+        return {
+            "type": "error",
+            "explanation": f"Computation error: {e}",
+            "result_df": None,
+            "answer": None,
+        }

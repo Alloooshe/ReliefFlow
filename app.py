@@ -1255,42 +1255,67 @@ with tab_query:
         "Widows with more than 4 members",
         "Displaced families with no income",
         "All critical priority families",
-        "Families from Masyaf",
-        "Orphan families in Homs",
+        "How many food baskets do we need in طرطوس?",
+        "What is the total budget needed for homeless families?",
+        "How many blankets needed for displaced families?",
+        "Medical supplies needed for اللاذقية",
     ]
 
     st.markdown('<div class="rf-section">Example queries — click to use</div>', unsafe_allow_html=True)
-    chip_cols = st.columns(4)
+    chip_cols = st.columns(3)
     for i, q in enumerate(EXAMPLE_QUERIES):
-        if chip_cols[i % 4].button(q, key=f"chip_{i}", use_container_width=True):
+        if chip_cols[i % 3].button(q, key=f"chip_{i}", use_container_width=True):
             st.session_state["query_text"] = q
 
     question = st.text_input(
         "Your question",
         value=st.session_state.get("query_text", ""),
-        placeholder="e.g. Widows with children who have no income",
+        placeholder="e.g. How many food baskets do we need in Tartus? or Show widows with children",
         key="query_input",
     )
 
-    if st.button("🔍  Search", type="primary") and question:
+    if st.button("🔍  Search / Ask", type="primary") and question:
         with st.spinner("Gemma4 is processing your query…"):
-            result_df, explanation = ai.answer_query(df, question)
-        st.session_state["query_result"]  = result_df
-        st.session_state["query_explain"] = explanation
+            query_result = ai.smart_query(df, question)
+        st.session_state["query_result"] = query_result
 
-    result_df  = st.session_state.get("query_result",  pd.DataFrame())
-    explanation = st.session_state.get("query_explain", "")
+    query_result = st.session_state.get("query_result", None)
 
-    if explanation:
-        st.markdown(f'<div class="rf-info"><strong>Gemma4:</strong> {explanation}</div>', unsafe_allow_html=True)
+    if query_result:
+        qtype = query_result.get("type")
+        explanation = query_result.get("explanation", "")
+        result_df = query_result.get("result_df")
+        answer = query_result.get("answer")
 
-    if not result_df.empty:
-        st.markdown(
-            f'<div class="rf-success">Found <strong>{len(result_df)}</strong> matching families</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.dataframe(
+        if explanation:
+            st.markdown(f'<div class="rf-info"><strong>Gemma4:</strong> {explanation}</div>', unsafe_allow_html=True)
+
+        # Analytics answer: show big answer card
+        if qtype == "analytics" and answer:
+            st.markdown(
+                f'<div style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:20px 24px;'
+                f'font-size:1.25rem;font-weight:600;color:#065f46;margin:16px 0;">'
+                f'📊 {answer}</div>',
+                unsafe_allow_html=True,
+            )
+
+        if qtype == "error":
+            st.error(explanation)
+
+        if result_df is not None and not result_df.empty:
+            st.markdown("<br>", unsafe_allow_html=True)
+            # Filter result: show as family table; breakdown table: show as plain dataframe
+            if qtype == "filter":
+                st.markdown(
+                    f'<div class="rf-success">Found <strong>{len(result_df)}</strong> matching families</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("<br>", unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="rf-section">Breakdown</div>', unsafe_allow_html=True)
+
+        if qtype == "filter" and result_df is not None and not result_df.empty:
+            st.dataframe(
             df_display(result_df.sort_values("priority_score", ascending=False)),
             column_config={
                 "family_num":       st.column_config.NumberColumn("#", width="small"),
@@ -1310,11 +1335,18 @@ with tab_query:
             use_container_width=True,
             height=400,
         )
-        csv_q = result_df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("⬇  Export results (CSV)", data=csv_q,
-                           file_name="search_results.csv", mime="text/csv")
-    elif explanation:
-        st.warning("No matching families found, or the query could not be executed.")
+            csv_q = result_df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button("⬇  Export results (CSV)", data=csv_q,
+                               file_name="search_results.csv", mime="text/csv")
+
+        elif qtype == "analytics" and result_df is not None and not result_df.empty:
+            st.dataframe(result_df, hide_index=True, use_container_width=True)
+            csv_q = result_df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button("⬇  Export breakdown (CSV)", data=csv_q,
+                               file_name="analytics_result.csv", mime="text/csv")
+
+        elif qtype == "filter" and (result_df is None or result_df.empty) and explanation:
+            st.warning("No matching families found, or the query could not be executed.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
