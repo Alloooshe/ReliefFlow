@@ -13,5 +13,6 @@ _inspect_samples.py
 # Data files — kept local only
 data/*
 !data/.gitkeep
+!data/*.md
 data_anonymized/
 data_anonymized.xlsx

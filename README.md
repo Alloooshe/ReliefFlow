@@ -99,6 +99,36 @@ Coordinator uploads Excel file  →  Auto-ingested, headers auto-detected
 
 ---
 
+## Data Source & Schema
+
+ReliefFlow ingests data exported from **KoBoToolbox** — 4 relational CSV files:
+
+| File | Content | Rows (example) |
+|---|---|---|
+| Main registration sheet | One row per family — geography, displacement type, housing, breadwinners | ~7,200 |
+| `FamilyMembers.csv` | One row per individual — relation, gender, vulnerability flags (21 structured fields) | ~19,200 |
+| `Damag_Group.csv` | One damage record per entry — category, type, classification | ~7,600 |
+| `Needsgroup.csv` | One need record per entry — program, classification, quantity, service status | ~17,200 |
+
+Tables join on `_id` (main) → `_submission__id` (child tables).
+
+See [`data/DATA_FORMAT.md`](data/DATA_FORMAT.md) for full column-level schema documentation.
+
+### Privacy Pipeline
+
+Raw KoBoToolbox exports contain PII and must never be committed. Run `anonymize.py` first:
+
+```bash
+python anonymize.py
+# Reads data/*.csv → writes data_anonymized/*.csv (PII stripped)
+```
+
+**Stripped fields include:** names, national IDs, phone numbers, full dates of birth (→ birth_year kept), detailed addresses, assault narratives, data entry operator info, organization identifiers.
+
+**Retained for analysis:** displacement type, housing type, vulnerability flags, damage categories, need programs, geography (governorate / district / village), family size, member counts.
+
+---
+
 ## Tech Stack
 
 | Component | Technology |
@@ -106,7 +136,7 @@ Coordinator uploads Excel file  →  Auto-ingested, headers auto-detected
 | AI / LLM | Gemma4 (`gemma4:latest`) via Ollama |
 | Speech-to-text | faster-whisper (`base` model, local) |
 | UI | Streamlit |
-| Data | pandas, openpyxl |
+| Data | pandas |
 | Charts | Plotly |
 | Language support | Arabic, English, mixed |
 | Deployment | Streamlit Cloud + Cloudflare Tunnel (Ollama stays local) |
@@ -130,13 +160,22 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Prepare Data
+
+Place raw KoBoToolbox CSV exports in `data/` (see [`data/DATA_FORMAT.md`](data/DATA_FORMAT.md)), then anonymize:
+
+```bash
+python anonymize.py
+# Output: data_anonymized/main_anon.csv, members_anon.csv, damage_anon.csv, needs_anon.csv
+```
+
 ### Run
 
 ```bash
 streamlit run app.py
 ```
 
-Open `http://localhost:8501`. Load the anonymized sample dataset from the sidebar to explore all features.
+Open `http://localhost:8501`. Click **Load & Analyse** in the sidebar to ingest the anonymized data.
 
 ### Deploy on Streamlit Cloud
 
@@ -156,9 +195,10 @@ Open `http://localhost:8501`. Load the anonymized sample dataset from the sideba
 
 ## Data Privacy Notes
 
-- The included sample file (`data_anonymized.xlsx`) has all names, phone numbers, intermediary names, and donor references removed.
-- Raw files containing PII are gitignored and must never be committed.
+- Raw KoBoToolbox exports and anonymized CSVs are **gitignored** — never committed to the repository.
+- Run `python anonymize.py` locally to produce the anonymized dataset before starting the app.
 - All AI inference runs on the operator's own hardware — no data is sent to Anthropic, Google, OpenAI, or any external service.
+- See [`data/DATA_FORMAT.md`](data/DATA_FORMAT.md) for exact schema and list of stripped PII fields.
 
 ---
 
