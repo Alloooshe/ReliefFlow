@@ -44,13 +44,13 @@ Extract family welfare record information and return ONLY a JSON object — no e
 JSON structure:
 {
   "family_size": integer or null,
-  "address": "full address text or null",
-  "city": "city name or null",
-  "humanitarian_situation": "description of situation / circumstances",
+  "governorate": "governorate name in Arabic or null",
+  "city": "sub-district / village name or null",
+  "displacement_type": "نازح داخلي | نازح عائد ... | لاجئ عائد ... | مجتمع مضيف | null",
+  "housing_type": "ملك | أجار | أستضافة | لا يوجد مسكن | أخرى | null",
+  "dependents": integer or null,
+  "breadwinners": integer or null,
   "need_type": "type of aid or help needed",
-  "phone": "phone number as string or null",
-  "intermediary": "name of referral person or null",
-  "additional_notes": "any other relevant details or null",
   "confidence": "high|medium|low"
 }
 Use null for any field that is missing or unclear.
@@ -95,16 +95,21 @@ def _extract_json_array(text: str) -> list:
 
 def parse_family(row: pd.Series) -> dict:
     """Extract structured fields from a raw family row using Gemma4."""
-    prompt = f"""You are analyzing an Arabic humanitarian aid / charity record for a family in need.
-Extract the key information and return ONLY a JSON object — no explanation, no markdown.
+    prompt = f"""You are analyzing an anonymized Syrian humanitarian aid record for a family in need.
+The data is already structured — your job is to summarize and tag it. Return ONLY a JSON object — no explanation, no markdown.
 
 Record fields:
-- Family role prefix (from contact field): {row.get("contact_name", "N/A")}
-- Family size: {row.get("family_size", "N/A")}
-- Current address: {row.get("address", "N/A")}
-- Humanitarian situation / displacement reason: {row.get("humanitarian_situation", "N/A")}
-- Type of need stated: {row.get("need_type", "N/A")}
-- Additional needs: {row.get("additional_needs", "N/A")}
+- Family size: {row.get("family_size", "N/A")} (dependents: {row.get("dependents", "N/A")}, breadwinners: {row.get("breadwinners", "N/A")})
+- Governorate: {row.get("governorate", "N/A")}
+- City / Region: {row.get("city", "N/A")}
+- Displacement type: {row.get("displacement_type", "N/A")}
+- Housing type: {row.get("housing_type", "N/A")}
+- Damage categories: {row.get("damage_categories", "none")}
+- Need programs: {row.get("needs_programs", "none")}
+- Pre-computed signals — widow: {row.get("is_widow", False)}, orphan: {row.get("is_orphan_family", False)},
+  displaced: {row.get("is_displaced", False)}, medical: {row.get("has_medical", False)},
+  disability: {row.get("has_disability", False)}, homeless: {row.get("is_homeless", False)},
+  unemployed: {row.get("is_unemployed", False)}
 
 Return exactly this JSON structure:
 {{
@@ -116,8 +121,8 @@ Return exactly this JSON structure:
   "medical_conditions": ["list conditions if any"],
   "has_disability": true_or_false,
   "is_unemployed": true_or_false,
-  "housing_status": "homeless|renting|owner|unknown",
-  "city": "extracted city name in Arabic",
+  "housing_status": "homeless|renting|owner|hosted|unknown",
+  "city": "{row.get("city", "")}",
   "summary_en": "one sentence English summary of this family situation"
 }}"""
     return _extract_json_object(_chat(prompt))
@@ -128,11 +133,12 @@ def generate_needs(row: pd.Series) -> list[dict]:
     prompt = f"""You are a humanitarian aid coordinator. Based on the family record below, list their specific needs.
 Return ONLY a JSON array — no explanation, no markdown.
 
-Family size: {row.get("family_size", "N/A")} members
-Address: {row.get("address", "N/A")}
-Situation: {row.get("humanitarian_situation", "N/A")}
-Need type stated: {row.get("need_type", "N/A")}
-Additional info: {row.get("additional_needs", "N/A")}
+Family size: {row.get("family_size", "N/A")} (dependents: {row.get("dependents", "N/A")}, breadwinners: {row.get("breadwinners", "N/A")})
+Governorate / City: {row.get("governorate", "N/A")} / {row.get("city", "N/A")}
+Displacement type: {row.get("displacement_type", "N/A")}
+Housing type: {row.get("housing_type", "N/A")}
+Damage categories: {row.get("damage_categories", "none")}
+Stated need programs: {row.get("needs_programs", "none")}
 Signals — displaced: {row.get("is_displaced", False)}, widow: {row.get("is_widow", False)},
           medical: {row.get("has_medical", False)}, disability: {row.get("has_disability", False)},
           unemployed: {row.get("is_unemployed", False)}, homeless: {row.get("is_homeless", False)}

@@ -1,50 +1,104 @@
-# Arabic column name → internal English field name
-# Strips trailing spaces before matching
-COLUMN_MAP = {
-    "الرقم التسلسلي": "seq_id",
+# Paths to anonymized CSV files (relative to app working directory)
+DATA_DIR = "data_anonymized"
+MAIN_CSV = f"{DATA_DIR}/main_anon.csv"
+MEMBERS_CSV = f"{DATA_DIR}/members_anon.csv"
+DAMAGE_CSV = f"{DATA_DIR}/damage_anon.csv"
+NEEDS_CSV = f"{DATA_DIR}/needs_anon.csv"
 
-    # Contact name (father or mother)
-    "اسم احد افراد العائلة (أب او ام )": "contact_name",
-    "اسم احد افراد العائلة(أب او ام )": "contact_name",
-    "اسم احد افراد العائلة(أب او ام)": "contact_name",
 
-    # Phone
-    "رقم هاتف للتواصل": "phone",
+# Arabic column names for main CSV
+class MainCols:
+    ID = "_id"
+    GOVERNORATE = "المحافظة"
+    DISTRICT = "المنطقة الإدارية"
+    SUB_DISTRICT = "المنطقة الفرعية"
+    VILLAGE = "اسم القرية"
+    DISPLACEMENT_TYPE = "طبيعة العائلة"
+    HOUSING_TYPE = "طبيعة السكن"
+    FAMILY_SIZE = "عدد أفراد العائلة الفعلي"
+    DEPENDENTS = "عدد الأفراد المعالين"
+    BREADWINNERS = "عدد الأفراد المعيلين"
+    ACCESS_TYPE = "طبيعة الوصول"
+    SURVEY_DATE = "تاريخ النشاط"
 
-    # Family size
-    "عدد افراد العائلة": "family_size",
 
-    # Address
-    "العنوان الحالي بالتفصيل": "address",
-    "المدينة والعنوان بالتفصيل": "address",
+# Arabic column names for members CSV
+class MemberCols:
+    FAMILY_ID = "_submission__id"
+    RELATION = "علاقته بالعائلة"
+    IS_HOH = "هل هذا الشخص هو رب الأسرة"
+    MARITAL_STATUS = "الحالة الاجتماعية"
+    GENDER = "الجنس"
+    INDIVIDUAL_STATUS = "حالة الفرد"
+    OCCUPATION = "occupation_bucket"
+    BIRTH_YEAR = "birth_year"
+    ASSAULT = "هل تعرضت لأي إعتداء سواء كان لفظي أو لفظي"
+    V_IMMEDIATE_HEALTH = "نقاط الضعف/حالة صحية تطلب تدخل فوري"
+    V_CHRONIC_DISEASE = "نقاط الضعف/مرض مزمن"
+    V_MENTAL_DISABILITY = "نقاط الضعف/إعاقة عقلية"
+    V_PHYSICAL_DISABILITY = "نقاط الضعف/إعاقة جسدية"
+    V_SPEECH_IMPAIRMENT = "نقاط الضعف/خلل في النطق"
+    V_HEARING_IMPAIRMENT = "نقاط الضعف/خلل في السمع"
+    V_VISION_IMPAIRMENT = "نقاط الضعف/خلل في الرؤية"
+    V_ELDERLY_WITH_CHILDREN = "نقاط الضعف/مسن مع أطفال"
+    V_ELDERLY_UNABLE = "نقاط الضعف/مسن غير قادر"
+    V_CHILD_PARENT = "نقاط الضعف/طفل والد"
+    V_MARRIED_CHILD = "نقاط الضعف/طفل متزوج"
+    V_CHILD_CAREGIVER = "نقاط الضعف/طفل مقدم رعاية"
+    V_CHILD_LABORER = "نقاط الضعف/طفل عامل"
+    V_CHILD_DROPOUT = "نقاط الضعف/طفل متسرب من المدرسة"
+    V_CHILD_SPECIAL_ED = "نقاط الضعف/طفل لديه احتياجات تعليمية خاصة"
+    V_SEPARATED_CHILD = "نقاط الضعف/طفل منفصل"
+    V_UNACCOMPANIED_CHILD = "نقاط الضعف/طفل غير مصحوب"
+    V_FEMALE_HOH = "نقاط الضعف/امرأة ربة اسرة"
+    V_SINGLE_FATHER = "نقاط الضعف/اب مقدم رعاية وحيد"
+    V_UNDOCUMENTED = "نقاط الضعف/شخص لا يمتلك وثائق"
 
-    # Humanitarian situation / displacement reason (same concept, different labels)
-    "الحالة الانسانية او سبب الهجرة والمكان ": "humanitarian_situation",
-    "الحالة الانسانية او سبب الهجرة والمكان": "humanitarian_situation",
-    "سبب الهجرة والمكان ": "humanitarian_situation",
-    "سبب الهجرة والمكان": "humanitarian_situation",
 
-    # Need type
-    "نوع الحاجة او سبب الحاجة ": "need_type",
-    "نوع الحاجة او سبب الحاجة": "need_type",
+# Arabic column names for damage CSV
+class DamageCols:
+    FAMILY_ID = "_submission__id"
+    CATEGORY = "فئة الضرر"
+    TYPE = "نوع الضرر"
+    CLASSIFICATION = "تصنيف الضرر"
+    QUANTITY = "الكمية المرتبطة بالضرر"
 
-    # Intermediary
-    "الوسيط (الشخص يلي وصلنا للعيلة)": "intermediary",
-    "اسم الشخص الوسيط": "intermediary",
 
-    # Sample-2-specific extras
-    "اولوية الحاجة من 1 ل 10": "reported_priority",
-    "حاجات اضافية": "additional_needs",
-    "اسم المتبرع ": "donor",
-    "اسم المتبرع": "donor",
-    "في حال كان هناك لحاجة دعم مالي مع السلة الغذائية ولماذا؟": "financial_support_note",
+# Arabic column names for needs CSV
+class NeedsCols:
+    FAMILY_ID = "_submission__id"
+    PROGRAM = "البرنامج (التصنيف الأول)"
+    CLASSIFICATION = "تصنيف الاحتياج (التصنيف الثاني)"
+    QUANTITY = "الكمية"
+    SERVICE_RECEIVED = "هل حصلت العائلة (أو الفرد) على الخدمة"
+
+
+# Displacement type values
+DISPLACED_TYPES = frozenset({
+    "نازح داخلي",
+    "نازح عائد (كان في منطقة أخرى داخل سوريا)",
+    "لاجئ عائد (من خارج القطر)",
+})
+
+# Housing type values
+HOUSING_RENTING = "أجار"
+HOUSING_HOMELESS = "لا يوجد مسكن"
+
+# Needs classification to need_type string
+BABY_NEEDS = frozenset({
+    "حليب أطفال",
+    "حفاضات أطفال",
+    "مكملات غذائية للرضع",
+})
+
+# Needs program mapping to English categories
+PROGRAM_TO_CATEGORY = {
+    "احتياجات غذائية": "food",
+    "احتياجات غير غذائية أو نظافة": "hygiene",
+    "احتياجات طبية أو صحية": "medical",
+    "احتياجات مالية أو سبل العيش": "financial",
+    "الحماية (CP,GBV,PSS)": "psychosocial",
+    "التعليم": "education",
+    "قانوني": "legal",
+    "احتياجات مأوى أو صرف صحي": "shelter",
 }
-
-# Columns that must have a value for a row to be considered real data
-IDENTITY_COLS = ["contact_name", "family_size", "need_type", "humanitarian_situation"]
-
-# Known city names used for extraction from free-text addresses
-KNOWN_CITIES = [
-    "حمص", "مصياف", "صافيتا", "طرطوس", "دمشق", "جبلة", "حلب",
-    "اللاذقية", "تدمر", "القصير", "بانياس", "السويداء", "درعا",
-]

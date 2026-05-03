@@ -60,8 +60,9 @@ SIGNAL_LABELS = {
 
 DISPLAY_COLS = [
     "family_num", "priority_tier", "priority_score", "family_size",
-    "city", "need_type", "is_widow", "is_orphan_family",
-    "is_displaced", "has_medical", "is_unemployed", "source_file",
+    "city", "governorate", "displacement_type", "housing_type",
+    "need_type", "is_widow", "is_orphan_family", "is_displaced",
+    "has_medical", "is_unemployed", "has_disability",
 ]
 
 PLOTLY_BASE = dict(
@@ -328,7 +329,19 @@ with st.sidebar:
             key="city_filter",
         )
 
-        n_filt = len(_df[_df["priority_tier"].isin(tier_filter) & _df["city"].isin(city_filter)])
+        displacement_options = sorted(_df["displacement_type"].dropna().unique().tolist())
+        displacement_filter = st.multiselect(
+            "Displacement Type",
+            displacement_options,
+            default=displacement_options,
+            key="displacement_filter",
+        )
+
+        n_filt = len(_df[
+            _df["priority_tier"].isin(tier_filter) &
+            _df["city"].isin(city_filter) &
+            _df["displacement_type"].isin(displacement_filter)
+        ])
         st.markdown(f'<div style="color:#94a3b8;font-size:0.8em;margin-top:6px;">Showing {n_filt} of {len(_df)} families</div>', unsafe_allow_html=True)
 
     st.divider()
@@ -384,9 +397,12 @@ if "df" not in st.session_state:
 df_full: pd.DataFrame = st.session_state["df"]
 tier_f = st.session_state.get("tier_filter", TIER_ORDER)
 city_f = st.session_state.get("city_filter", df_full["city"].unique().tolist())
+disp_f = st.session_state.get("displacement_filter", df_full["displacement_type"].unique().tolist())
 
 df: pd.DataFrame = df_full[
-    df_full["priority_tier"].isin(tier_f) & df_full["city"].isin(city_f)
+    df_full["priority_tier"].isin(tier_f) &
+    df_full["city"].isin(city_f) &
+    df_full["displacement_type"].isin(disp_f)
 ].copy()
 
 
@@ -537,14 +553,14 @@ with tab_dash:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _PARSED_FIELDS = [
-    ("family_size",            "Family Size (# members)", "number"),
-    ("city",                   "City / Region",           "text"),
-    ("address",                "Full Address",            "text"),
-    ("humanitarian_situation", "Situation / Circumstances","area"),
-    ("need_type",              "Type of Need",            "text"),
-    ("phone",                  "Phone Number",            "text"),
-    ("intermediary",           "Intermediary / Referral", "text"),
-    ("additional_notes",       "Additional Notes",        "area"),
+    ("family_size",       "Family Size (# members)", "number"),
+    ("governorate",       "Governorate",             "text"),
+    ("city",              "Sub-District / Village",  "text"),
+    ("displacement_type", "Displacement Type",       "text"),
+    ("housing_type",      "Housing Type",            "text"),
+    ("dependents",        "Dependents",              "number"),
+    ("breadwinners",      "Breadwinners",            "number"),
+    ("need_type",         "Type of Need",            "text"),
 ]
 
 
@@ -1147,7 +1163,7 @@ with tab_detail:
             for k, v in row.items():
                 if k in skip or k.startswith("is_") or k in ("has_medical", "has_disability"):
                     continue
-                if pd.notna(v) and str(v).strip() not in ("", "nan"):
+                if not (hasattr(v, '__iter__') and not isinstance(v, str)) and pd.notna(v) and str(v).strip() not in ("", "nan"):
                     st.markdown(f"**{k}:** {v}")
 
     # ── right: AI profile + needs ──
@@ -1157,9 +1173,9 @@ with tab_detail:
         if st.button("🤖  Analyse Family", key="btn_profile", use_container_width=True):
             with st.spinner("Gemma4 is analysing this family…"):
                 profile = ai.parse_family(row)
-                st.session_state.setdefault("ai_cache", {})[row["family_id"]] = profile
+                st.session_state.setdefault("ai_cache", {})[str(row["family_id"])] = profile
 
-        cached = st.session_state.get("ai_cache", {}).get(row["family_id"], {})
+        cached = st.session_state.get("ai_cache", {}).get(str(row["family_id"]), {})
         if cached:
             if cached.get("summary_en"):
                 st.markdown(
@@ -1196,9 +1212,9 @@ with tab_detail:
         if st.button("📋  Generate Needs List", key="btn_needs_fam", use_container_width=True):
             with st.spinner("Gemma4 is generating needs list…"):
                 needs_list = ai.generate_needs(row)
-                st.session_state.setdefault("ai_cache", {})[row["family_id"] + "_needs"] = needs_list
+                st.session_state.setdefault("ai_cache", {})[str(row["family_id"]) + "_needs"] = needs_list
 
-        cached_needs = st.session_state.get("ai_cache", {}).get(row["family_id"] + "_needs", [])
+        cached_needs = st.session_state.get("ai_cache", {}).get(str(row["family_id"]) + "_needs", [])
         if cached_needs:
             urg_icon = {"critical": "🔴", "high": "🟠", "medium": "🟡"}
             cat_icon = {

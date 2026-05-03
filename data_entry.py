@@ -46,40 +46,41 @@ def add_record(parsed: dict, df: pd.DataFrame) -> pd.DataFrame:
     Create a fully-scored row from parsed fields and append it to df.
     Returns the updated DataFrame.
     """
-    from scoring import extract_signals, compute_priority
-    from schema import KNOWN_CITIES
+    from scoring import compute_priority
+    from schema import DISPLACED_TYPES, HOUSING_RENTING, HOUSING_HOMELESS
 
-    def _city(address: str) -> str:
-        for c in KNOWN_CITIES:
-            if c in str(address):
-                return c
-        return parsed.get("city") or "Unknown"
-
-    address = parsed.get("address") or ""
-    city = _city(address) if address else (parsed.get("city") or "Unknown")
+    displacement_type = parsed.get("displacement_type") or ""
+    housing_type = parsed.get("housing_type") or ""
+    breadwinners = parsed.get("breadwinners")
 
     new_row: dict = {
-        "family_id":              str(uuid.uuid4())[:8].upper(),
-        "source_file":            "manual_entry",
-        "source_sheet":           "log_entry",
-        "seq_id":                 None,
-        "family_size":            parsed.get("family_size"),
-        "address":                address,
-        "city":                   city,
-        "humanitarian_situation": parsed.get("humanitarian_situation") or "",
-        "need_type":              parsed.get("need_type") or "",
-        "phone":                  parsed.get("phone") or "",
-        "intermediary":           parsed.get("intermediary") or "",
-        "additional_needs":       parsed.get("additional_notes") or "",
-        "reported_priority":      None,
-        "donor":                  None,
-        "financial_support_note": None,
-        "contact_name":           "",  # privacy: no name stored
+        "family_id":         str(uuid.uuid4())[:8].upper(),
+        "source_file":       "manual_entry",
+        "source_sheet":      "log_entry",
+        "family_size":       parsed.get("family_size"),
+        "city":              parsed.get("city") or "Unknown",
+        "governorate":       parsed.get("governorate") or "",
+        "displacement_type": displacement_type,
+        "housing_type":      housing_type,
+        "dependents":        parsed.get("dependents"),
+        "breadwinners":      breadwinners,
+        "need_type":         parsed.get("need_type") or "",
+        # Pre-computed boolean signals (manually derived from structured fields)
+        "is_displaced":      displacement_type in DISPLACED_TYPES,
+        "is_homeless":       housing_type == HOUSING_HOMELESS,
+        "is_renting":        housing_type == HOUSING_RENTING,
+        "is_unemployed":     bool(breadwinners == 0) if breadwinners is not None else False,
+        "is_widow":          False,
+        "is_orphan_family":  False,
+        "has_medical":       False,
+        "has_disability":    False,
+        "is_pregnant":       False,
+        "has_damage":        False,
+        "service_received":  False,
     }
 
     row_series = pd.Series(new_row)
-    signals  = extract_signals(row_series)
-    priority = compute_priority(row_series, signals)
+    priority = compute_priority(row_series)
     new_row.update(priority)
 
     max_num = int(df["family_num"].max()) if (not df.empty and "family_num" in df.columns) else 0
