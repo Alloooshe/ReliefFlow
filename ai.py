@@ -1,18 +1,39 @@
-"""Gemma4 (via Ollama) interface for ReliefFlow."""
+"""Gemma4 interface — Google AI Studio (cloud) or Ollama (local)."""
 import base64
 import json
 import os
 import re
 
-from ollama import Client
 import pandas as pd
 
-MODEL = "gemma4:latest"
+# ── Provider selection ────────────────────────────────────────────────────────
+# Cloud: set GEMINI_API_KEY (env var or st.secrets)
+# Local: set OLLAMA_HOST (default: http://localhost:11434)
 
-# Host is read once at import time.
-# Set OLLAMA_HOST env-var (or st.secrets["OLLAMA_HOST"]) before importing this module.
-_HOST   = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-_client = Client(host=_HOST)
+_GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+# Try loading from Streamlit secrets when running inside Streamlit
+try:
+    import streamlit as st
+    if not _GEMINI_KEY:
+        _GEMINI_KEY = st.secrets.get("GEMINI_API_KEY", "")
+except Exception:
+    pass
+
+GEMINI_MODEL = "gemma-4-26b-a4b-it"
+OLLAMA_MODEL = "gemma4:latest"
+
+_USE_CLOUD = bool(_GEMINI_KEY)
+
+if _USE_CLOUD:
+    import google.generativeai as genai
+    genai.configure(api_key=_GEMINI_KEY)
+    _genai_model = genai.GenerativeModel(GEMINI_MODEL)
+    _HOST = f"Google AI Studio ({GEMINI_MODEL})"
+else:
+    from ollama import Client as _OllamaClient
+    _HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    _ollama_client = _OllamaClient(host=_HOST)
 
 
 def get_host() -> str:
@@ -20,12 +41,17 @@ def get_host() -> str:
 
 
 def _chat(prompt: str, system: str | None = None) -> str:
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-    resp = _client.chat(model=MODEL, messages=messages)
-    return resp["message"]["content"]
+    if _USE_CLOUD:
+        full_prompt = f"{system}\n\n{prompt}" if system else prompt
+        response = _genai_model.generate_content(full_prompt)
+        return response.text
+    else:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        resp = _ollama_client.chat(model=OLLAMA_MODEL, messages=messages)
+        return resp["message"]["content"]
 
 
 def _extract_json_object(text: str) -> dict:
@@ -59,17 +85,23 @@ Use null for any field that is missing or unclear.
 
 def parse_image_record(image_bytes: bytes) -> dict:
     """Parse a handwritten or printed welfare form photo using Gemma4 vision."""
-    img_b64 = base64.b64encode(image_bytes).decode()
     prompt = (
         "You are helping a charity digitize a humanitarian aid family welfare record.\n"
         "The image shows a handwritten or printed form, possibly in Arabic and/or English.\n"
         + _RECORD_FIELDS_PROMPT
     )
-    resp = _client.chat(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt, "images": [img_b64]}],
-    )
-    return _extract_json_object(resp["message"]["content"])
+    if _USE_CLOUD:
+        import google.generativeai as genai
+        img_part = {"mime_type": "image/jpeg", "data": image_bytes}
+        response = _genai_model.generate_content([prompt, img_part])
+        return _extract_json_object(response.text)
+    else:
+        img_b64 = base64.b64encode(image_bytes).decode()
+        resp = _ollama_client.chat(
+            model=OLLAMA_MODEL,
+            messages=[{"role": "user", "content": prompt, "images": [img_b64]}],
+        )
+        return _extract_json_object(resp["message"]["content"])
 
 
 def parse_text_record(text: str) -> dict:

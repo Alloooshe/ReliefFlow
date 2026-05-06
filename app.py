@@ -346,8 +346,9 @@ with st.sidebar:
 
     st.divider()
     _host_display = ai.get_host().replace("http://", "").replace("https://", "")
+    _is_cloud = "Google AI Studio" in _host_display
     _is_local = "localhost" in _host_display or "127.0.0.1" in _host_display
-    _host_label = "🟢 local" if _is_local else "🌐 remote"
+    _host_label = "☁️ cloud" if _is_cloud else ("🟢 local" if _is_local else "🌐 remote")
     st.markdown(
         f'<div style="color:#475569;font-size:0.75em;text-align:center;">'
         f'Powered by Gemma4<br>'
