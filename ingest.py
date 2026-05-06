@@ -3,23 +3,24 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from schema import (
-    MAIN_CSV, MEMBERS_CSV, DAMAGE_CSV, NEEDS_CSV,
+    DATA_FILE, SHEET_MAIN, SHEET_MEMBERS, SHEET_DAMAGE, SHEET_NEEDS,
     MainCols, MemberCols, DamageCols, NeedsCols,
     DISPLACED_TYPES, HOUSING_RENTING, HOUSING_HOMELESS, BABY_NEEDS,
 )
 
 
-def load_kobo_data(
-    main_path=MAIN_CSV,
-    members_path=MEMBERS_CSV,
-    damage_path=DAMAGE_CSV,
-    needs_path=NEEDS_CSV,
-):
-    """Load 4 KoBo CSVs and return flat family DataFrame."""
-    main = pd.read_csv(main_path, low_memory=False)
-    members = pd.read_csv(members_path, low_memory=False)
-    damage = pd.read_csv(damage_path, low_memory=False)
-    needs = pd.read_csv(needs_path, low_memory=False)
+def load_kobo_data(source=None):
+    """
+    Load merged Excel file and return flat family DataFrame.
+    source: file path string/Path, or a file-like object (st.UploadedFile).
+    Defaults to DATA_FILE on disk.
+    """
+    src = source or DATA_FILE
+    xl = pd.ExcelFile(src)
+    main    = xl.parse(SHEET_MAIN)
+    members = xl.parse(SHEET_MEMBERS)
+    damage  = xl.parse(SHEET_DAMAGE)
+    needs   = xl.parse(SHEET_NEEDS)
     return _build_flat_df(main, members, damage, needs)
 
 
@@ -32,7 +33,6 @@ def _build_flat_df(main, members, damage, needs):
     mem = members.copy()
     hoh = mem[mem[MemberCols.IS_HOH] == "نعم"]
 
-    # is_widow: female HoH flag OR female HoH with separated/divorced status
     female_hoh_ids = hoh[
         (hoh[MemberCols.GENDER] == "أنثى") &
         (hoh[MemberCols.MARITAL_STATUS].isin(["منفصل/ة", "مطلق/ة"]))
@@ -42,18 +42,15 @@ def _build_flat_df(main, members, damage, needs):
     ][MemberCols.FAMILY_ID]
     widow_ids = set(female_hoh_ids) | set(female_flag_ids)
 
-    # is_orphan_family: HoH deceased/missing
     orphan_ids = set(hoh[
         hoh[MemberCols.INDIVIDUAL_STATUS].isin(["متوفي", "مفقود"])
     ][MemberCols.FAMILY_ID])
 
-    # has_medical: any member with immediate health or chronic disease flag
     medical_ids = set(mem[
         (mem[MemberCols.V_IMMEDIATE_HEALTH] == 1.0) |
         (mem[MemberCols.V_CHRONIC_DISEASE] == 1.0)
     ][MemberCols.FAMILY_ID])
 
-    # has_disability: any disability flag
     disability_flags = [
         MemberCols.V_MENTAL_DISABILITY,
         MemberCols.V_PHYSICAL_DISABILITY,
@@ -65,29 +62,20 @@ def _build_flat_df(main, members, damage, needs):
     disability_mask = mem[disability_cols].fillna(0).max(axis=1) == 1.0
     disability_ids = set(mem[disability_mask][MemberCols.FAMILY_ID])
 
-    # aggregate counts
     chronic_count = (
         mem[mem[MemberCols.V_CHRONIC_DISEASE] == 1.0]
-        .groupby(MemberCols.FAMILY_ID)
-        .size()
-        .rename("chronic_disease_members")
+        .groupby(MemberCols.FAMILY_ID).size().rename("chronic_disease_members")
     )
     disability_count = (
         mem[disability_mask]
-        .groupby(MemberCols.FAMILY_ID)
-        .size()
-        .rename("disability_members")
+        .groupby(MemberCols.FAMILY_ID).size().rename("disability_members")
     )
     dropout_count = (
         mem[mem[MemberCols.V_CHILD_DROPOUT] == 1.0]
-        .groupby(MemberCols.FAMILY_ID)
-        .size()
-        .rename("school_dropout_children")
+        .groupby(MemberCols.FAMILY_ID).size().rename("school_dropout_children")
     )
     member_count = (
-        mem.groupby(MemberCols.FAMILY_ID)
-        .size()
-        .rename("member_count")
+        mem.groupby(MemberCols.FAMILY_ID).size().rename("member_count")
     )
 
     # --- Needs aggregations ---
@@ -112,8 +100,7 @@ def _build_flat_df(main, members, damage, needs):
     )
     needs_programs = (
         n.groupby(NeedsCols.FAMILY_ID)[NeedsCols.PROGRAM]
-        .agg(lambda x: list(x.unique()))
-        .rename("needs_programs")
+        .agg(lambda x: list(x.unique())).rename("needs_programs")
     )
 
     # --- Damage aggregations ---
@@ -121,57 +108,50 @@ def _build_flat_df(main, members, damage, needs):
     damage_ids = set(d[DamageCols.FAMILY_ID])
     damage_categories = (
         d.groupby(DamageCols.FAMILY_ID)[DamageCols.CATEGORY]
-        .agg(lambda x: list(x.unique()))
-        .rename("damage_categories")
+        .agg(lambda x: list(x.unique())).rename("damage_categories")
     )
 
     # --- Assemble flat df ---
-    df["is_widow"] = df["family_id"].isin(widow_ids)
+    df["is_widow"]         = df["family_id"].isin(widow_ids)
     df["is_orphan_family"] = df["family_id"].isin(orphan_ids)
-    df["is_displaced"] = df[MainCols.DISPLACEMENT_TYPE].isin(DISPLACED_TYPES)
-    df["is_homeless"] = df[MainCols.HOUSING_TYPE] == HOUSING_HOMELESS
-    df["is_renting"] = df[MainCols.HOUSING_TYPE] == HOUSING_RENTING
-    df["is_unemployed"] = (
-        (df[MainCols.BREADWINNERS] == 0) |
-        df["family_id"].isin(fin_need_ids)
+    df["is_displaced"]     = df[MainCols.DISPLACEMENT_TYPE].isin(DISPLACED_TYPES)
+    df["is_homeless"]      = df[MainCols.HOUSING_TYPE] == HOUSING_HOMELESS
+    df["is_renting"]       = df[MainCols.HOUSING_TYPE] == HOUSING_RENTING
+    df["is_unemployed"]    = (
+        (df[MainCols.BREADWINNERS] == 0) | df["family_id"].isin(fin_need_ids)
     )
-    df["has_medical"] = (
-        df["family_id"].isin(medical_ids) |
-        df["family_id"].isin(medical_need_ids)
+    df["has_medical"]      = (
+        df["family_id"].isin(medical_ids) | df["family_id"].isin(medical_need_ids)
     )
-    df["has_disability"] = df["family_id"].isin(disability_ids)
-    df["is_pregnant"] = df["family_id"].isin(baby_ids)
-    df["has_damage"] = df["family_id"].isin(damage_ids)
+    df["has_disability"]   = df["family_id"].isin(disability_ids)
+    df["is_pregnant"]      = df["family_id"].isin(baby_ids)
+    df["has_damage"]       = df["family_id"].isin(damage_ids)
     df["service_received"] = df["family_id"].isin(service_ids)
 
-    # Geography: hierarchical city fallback
     df["city"] = (
         df[MainCols.SUB_DISTRICT]
         .fillna(df[MainCols.DISTRICT])
         .fillna(df[MainCols.GOVERNORATE])
     )
-    df["governorate"] = df[MainCols.GOVERNORATE]
+    df["governorate"]       = df[MainCols.GOVERNORATE]
     df["displacement_type"] = df[MainCols.DISPLACEMENT_TYPE]
-    df["housing_type"] = df[MainCols.HOUSING_TYPE]
+    df["housing_type"]      = df[MainCols.HOUSING_TYPE]
 
-    # Rename core fields
     df = df.rename(columns={
-        MainCols.FAMILY_SIZE: "family_size",
-        MainCols.DEPENDENTS: "dependents",
+        MainCols.FAMILY_SIZE:  "family_size",
+        MainCols.DEPENDENTS:   "dependents",
         MainCols.BREADWINNERS: "breadwinners",
-        MainCols.SURVEY_DATE: "survey_date",
+        MainCols.SURVEY_DATE:  "survey_date",
     })
 
-    # Join aggregated series
     for ser in [chronic_count, disability_count, dropout_count, member_count,
                 need_type_ser, needs_programs, damage_categories]:
         df = df.join(ser, on="family_id", how="left")
 
-    df["need_type"] = df["need_type"].fillna("")
+    df["need_type"]   = df["need_type"].fillna("")
     df["source_file"] = "kobo_import"
     df["source_sheet"] = ""
 
-    # Drop raw Arabic columns
     drop_cols = [
         MainCols.DISPLACEMENT_TYPE, MainCols.HOUSING_TYPE,
         MainCols.GOVERNORATE, MainCols.DISTRICT,
@@ -186,12 +166,12 @@ def _build_flat_df(main, members, damage, needs):
 
 
 def load_all_samples(pattern=None):
-    """Load anonymized KoBo data (backward-compatible entry point)."""
+    """Backward-compatible entry point — loads from disk."""
     return load_kobo_data()
 
 
 def load_excel(file, source_name=None):
-    """Deprecated: kept for backward compatibility."""
+    """Deprecated stub."""
     import warnings
     warnings.warn("load_excel is deprecated; use load_kobo_data() instead", DeprecationWarning)
     return load_kobo_data()

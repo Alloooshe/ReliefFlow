@@ -1,9 +1,11 @@
-# Paths to anonymized CSV files (relative to app working directory)
-DATA_DIR = "data_anonymized"
-MAIN_CSV = f"{DATA_DIR}/main_anon.csv"
-MEMBERS_CSV = f"{DATA_DIR}/members_anon.csv"
-DAMAGE_CSV = f"{DATA_DIR}/damage_anon.csv"
-NEEDS_CSV = f"{DATA_DIR}/needs_anon.csv"
+# Single merged anonymized file (relative to app working directory)
+DATA_FILE = "data_anonymized/relief_data.xlsx"
+
+# Sheet names inside DATA_FILE
+SHEET_MAIN    = "main"
+SHEET_MEMBERS = "members"
+SHEET_DAMAGE  = "damage"
+SHEET_NEEDS   = "needs"
 
 
 # Arabic column names for main CSV

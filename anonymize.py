@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 
 OUTPUT_DIR = Path("data_anonymized")
+OUTPUT_FILE = OUTPUT_DIR / "relief_data.xlsx"
 
 # PII columns to drop from each table
 MAIN_PII_COLS = {
@@ -253,17 +254,18 @@ def main():
     verify_anonymized(damage_df, "damage")
     verify_anonymized(needs_df, "needs")
 
-    print(f"\nWriting anonymized files to {OUTPUT_DIR}/...")
-    main_df.to_csv(OUTPUT_DIR / "main_anon.csv", index=False)
-    members_df.to_csv(OUTPUT_DIR / "members_anon.csv", index=False)
-    damage_df.to_csv(OUTPUT_DIR / "damage_anon.csv", index=False)
-    needs_df.to_csv(OUTPUT_DIR / "needs_anon.csv", index=False)
+    print(f"\nWriting merged file → {OUTPUT_FILE} ...")
+    with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
+        main_df.to_excel(writer,    sheet_name="main",    index=False)
+        members_df.to_excel(writer, sheet_name="members", index=False)
+        damage_df.to_excel(writer,  sheet_name="damage",  index=False)
+        needs_df.to_excel(writer,   sheet_name="needs",   index=False)
 
-    print(f"  ✓ main_anon.csv ({len(main_df)} rows)")
-    print(f"  ✓ members_anon.csv ({len(members_df)} rows)")
-    print(f"  ✓ damage_anon.csv ({len(damage_df)} rows)")
-    print(f"  ✓ needs_anon.csv ({len(needs_df)} rows)")
-    print("\nAnonymization complete!")
+    print(f"  ✓ sheet 'main'    ({len(main_df)} rows)")
+    print(f"  ✓ sheet 'members' ({len(members_df)} rows)")
+    print(f"  ✓ sheet 'damage'  ({len(damage_df)} rows)")
+    print(f"  ✓ sheet 'needs'   ({len(needs_df)} rows)")
+    print(f"\nAnonymization complete → {OUTPUT_FILE}")
     return True
 
 
